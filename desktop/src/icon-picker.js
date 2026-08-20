@@ -1,122 +1,146 @@
 import { el } from "./components.js";
+import { getLatestVersion, profileIconUrl } from "./ddragon.js";
+import { openOverlay, closeModal } from "./modal.js";
 
-const VERSIONS_URL = "https://ddragon.leagueoflegends.com/api/versions.json";
 const iconsUrlFor = (version) =>
   `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/profileicon.json`;
-const iconImageUrlFor = (version, id) =>
-  `https://ddragon.leagueoflegends.com/cdn/${version}/img/profileicon/${id}.png`;
 
 let cachedIcons = null; // [{ id, url }]
-let overlayEl = null;
-
-function ensureOverlay() {
-  if (overlayEl) return overlayEl;
-  overlayEl = document.createElement("div");
-  overlayEl.className = "modal-overlay";
-  overlayEl.hidden = true;
-  document.body.appendChild(overlayEl);
-  return overlayEl;
-}
 
 async function loadIcons() {
   if (cachedIcons) return cachedIcons;
 
-  const versions = await fetch(VERSIONS_URL).then((r) => r.json());
-  const latest = versions[0];
-  const data = await fetch(iconsUrlFor(latest)).then((r) => r.json());
+  const version = await getLatestVersion();
+  const data = await fetch(iconsUrlFor(version)).then((r) => r.json());
 
   cachedIcons = Object.keys(data.data)
     .map(Number)
     .sort((a, b) => a - b)
-    .map((id) => ({ id, url: iconImageUrlFor(latest, id) }));
+    .map((id) => ({ id, url: profileIconUrl(id, version) }));
 
   return cachedIcons;
 }
 
-const MAX_RENDERED_ICONS = 240;
+const PAGE_SIZE = 80;
 
-function renderGrid(gridEl, icons, onPick) {
-  gridEl.innerHTML = "";
-  if (icons.length === 0) {
-    gridEl.appendChild(el("p", { class: "icon-picker-empty", text: "Nenhum ícone encontrado." }));
-    return;
+function setupInfiniteGrid(gridEl, onPick) {
+  let renderedCount = 0;
+  let currentList = [];
+
+  function appendNextBatch() {
+    if (renderedCount >= currentList.length) return;
+    const nextBatch = currentList.slice(renderedCount, renderedCount + PAGE_SIZE);
+    renderedCount += nextBatch.length;
+
+    for (const icon of nextBatch) {
+      const button = el("button", {
+        type: "button",
+        class: "icon-picker-item",
+        title: String(icon.id),
+      });
+      const img = document.createElement("img");
+      img.loading = "lazy";
+      img.src = icon.url;
+      img.alt = `Icon ${icon.id}`;
+      button.appendChild(img);
+      button.onclick = () => onPick(icon.id);
+      gridEl.appendChild(button);
+    }
   }
-  const visible = icons.slice(0, MAX_RENDERED_ICONS);
-  for (const icon of visible) {
-    const button = el("button", { type: "button", class: "icon-picker-item", title: String(icon.id) });
-    const img = document.createElement("img");
-    img.loading = "lazy";
-    img.src = icon.url;
-    img.alt = `Ícone ${icon.id}`;
-    button.appendChild(img);
-    button.onclick = () => onPick(icon.id);
-    gridEl.appendChild(button);
+
+  function reset(filteredList) {
+    gridEl.innerHTML = "";
+    gridEl.scrollTop = 0;
+    renderedCount = 0;
+    currentList = filteredList;
+    if (currentList.length === 0) {
+      gridEl.appendChild(el("p", { class: "icon-picker-empty", text: "No icons found." }));
+      return;
+    }
+    appendNextBatch();
   }
-  if (icons.length > visible.length) {
-    gridEl.appendChild(
-      el("p", {
-        class: "icon-picker-empty",
-        text: `Mostrando ${visible.length} de ${icons.length} — refine a busca para ver mais.`,
-      })
-    );
-  }
+
+  gridEl.onscroll = () => {
+    if (gridEl.scrollTop + gridEl.clientHeight >= gridEl.scrollHeight - 160) {
+      appendNextBatch();
+    }
+  };
+
+  return { reset };
+}
+
+/** Simple debounce helper */
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
 }
 
 /**
  * Opens a searchable grid of League profile icons pulled live from
- * Data Dragon. Resolves with the chosen icon id, or null if cancelled.
+ * Data Dragon with smooth infinite scroll. Resolves with the chosen icon id,
+ * or null if cancelled.
  */
 export function openIconPicker({ kind = "profile" } = {}) {
   return new Promise((resolve) => {
-    const overlay = ensureOverlay();
-    overlay.innerHTML = "";
-    overlay.hidden = false;
-    overlay.onclick = (event) => {
-      if (event.target === overlay) finish(null);
-    };
+    let resolved = false;
+
+    function finish(iconId) {
+      if (resolved) return;
+      resolved = true;
+      closeModal();
+      resolve(iconId);
+    }
+
+    const overlay = openOverlay(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve(null);
+      }
+    });
 
     const box = el("div", { class: "modal-box icon-picker-box" });
     box.appendChild(
-      el("h2", { text: kind === "client" ? "Escolher ícone do client" : "Escolher ícone de perfil" })
+      el("h2", { text: kind === "client" ? "Choose Client Icon" : "Choose Profile Icon" })
     );
 
     const search = el("input", {
       type: "text",
       class: "icon-picker-search",
-      placeholder: "Buscar por ID...",
+      placeholder: "Search by ID...",
     });
     box.appendChild(search);
 
     const grid = el("div", { class: "icon-picker-grid" });
-    grid.appendChild(el("p", { class: "icon-picker-empty", text: "Carregando ícones..." }));
+    grid.appendChild(el("p", { class: "icon-picker-empty", text: "Loading icons..." }));
     box.appendChild(grid);
 
     const actions = el("div", { class: "modal-actions" }, [
-      el("button", { type: "button", text: "Cancelar", onClick: () => finish(null) }),
+      el("button", { type: "button", text: "Cancel", onClick: () => finish(null) }),
     ]);
     box.appendChild(actions);
 
     overlay.appendChild(box);
 
-    function finish(iconId) {
-      overlay.hidden = true;
-      overlay.innerHTML = "";
-      resolve(iconId);
-    }
-
     loadIcons()
       .then((icons) => {
-        renderGrid(grid, icons, finish);
-        search.oninput = () => {
+        const scroller = setupInfiniteGrid(grid, finish);
+        scroller.reset(icons);
+
+        const debouncedSearch = debounce(() => {
           const query = search.value.trim();
           const filtered = query ? icons.filter((icon) => String(icon.id).includes(query)) : icons;
-          renderGrid(grid, filtered, finish);
-        };
+          scroller.reset(filtered);
+        }, 150);
+
+        search.oninput = debouncedSearch;
       })
       .catch((error) => {
         grid.innerHTML = "";
         grid.appendChild(
-          el("p", { class: "icon-picker-empty", text: `Não foi possível carregar os ícones: ${error.message}` })
+          el("p", { class: "icon-picker-empty", text: `Could not load icons: ${error.message}` })
         );
       });
 

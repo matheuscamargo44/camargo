@@ -33,8 +33,10 @@ function startBackend() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 960,
-    height: 640,
+    width: 680,
+    height: 480,
+    minWidth: 560,
+    minHeight: 400,
     title: "camargo",
     icon: ICON_PATH,
     show: false,
@@ -74,10 +76,10 @@ function createTray() {
   tray.setToolTip("camargo");
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Abrir camargo", click: showWindow },
+      { label: "Open camargo", click: showWindow },
       { type: "separator" },
       {
-        label: "Sair",
+        label: "Quit",
         click: () => {
           isQuitting = true;
           app.quit();
@@ -114,4 +116,3 @@ if (!gotSingleInstanceLock) {
   });
 }
 
-module.exports = { BACKEND_URL };

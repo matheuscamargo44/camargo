@@ -1,3 +1,6 @@
+import { el } from "./components.js";
+import { icon } from "./icons.js";
+
 const routes = new Map();
 let activeCleanup = null;
 let viewRoot = null;
@@ -20,6 +23,7 @@ function updateActiveNav(path) {
   if (!navLinksRoot) return;
   for (const link of navLinksRoot.querySelectorAll("[data-route]")) {
     link.classList.toggle("active", link.dataset.route === path);
+    link.setAttribute("aria-current", link.dataset.route === path ? "page" : "false");
   }
 }
 
@@ -33,9 +37,27 @@ function render() {
   }
 
   viewRoot.innerHTML = "";
+  // Add enter animation class
+  viewRoot.classList.remove("view-enter");
+  // Force reflow to restart animation
+  void viewRoot.offsetWidth;
+  viewRoot.classList.add("view-enter");
+
   const renderFn = routes.get(path);
   if (renderFn) {
-    activeCleanup = renderFn(viewRoot) || null;
+    try {
+      activeCleanup = renderFn(viewRoot) || null;
+    } catch (error) {
+      viewRoot.innerHTML = "";
+      const errorIcon = icon("monitor");
+      viewRoot.appendChild(
+        el("div", { class: "empty-state" }, [
+          errorIcon,
+          el("span", { text: "Failed to load view" }),
+          el("span", { text: error.message, style: "font-size:12px;color:var(--text-muted)" }),
+        ])
+      );
+    }
   }
 }
 

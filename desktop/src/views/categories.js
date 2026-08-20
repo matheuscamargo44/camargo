@@ -1,21 +1,15 @@
-// Maps backend Feature.category values (features/*.py) to the screens shown
-// in the sidebar. "Game Tools" lives inside the Automação screen as a
-// subsection, and "Settings" inside the Social screen, so the nav stays
-// short instead of having a screen with a single card.
 export const NAV_ITEMS = [
-  { route: "/automation", label: "Automação" },
-  { route: "/customization", label: "Customização" },
-  { route: "/social", label: "Social & config" },
+  { route: "/automation", label: "Automation" },
+  { route: "/customization", label: "Customization" },
+  { route: "/social", label: "Social" },
 ];
 
 export const CATEGORY_LABELS = {
-  Automation: "Automação",
-  "Game Tools": "Ferramentas de Jogo",
-  Customization: "Customização",
+  Automation: "Automation",
+  Customization: "Customization",
   Social: "Social",
-  Settings: "Configurações",
 };
 
-export const AUTOMATION_SCREEN_CATEGORIES = ["Automation", "Game Tools"];
+export const AUTOMATION_SCREEN_CATEGORIES = ["Automation"];
 export const CUSTOMIZATION_SCREEN_CATEGORIES = ["Customization"];
-export const SOCIAL_SCREEN_CATEGORIES = ["Social", "Settings"];
+export const SOCIAL_SCREEN_CATEGORIES = ["Social"];

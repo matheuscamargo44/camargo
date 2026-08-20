@@ -46,6 +46,9 @@ class AutoAccept(Feature):
     def _monitor_queue(self):
         while self._running:
             if self.enabled:
+                if not self.lcu.is_league_connected():
+                    time.sleep(2)
+                    continue
                 try:
                     response = self.lcu.lcu_request(
                         "GET", "/lol-lobby/v2/lobby/matchmaking/search-state"
@@ -56,7 +59,7 @@ class AutoAccept(Feature):
                         if delay:
                             time.sleep(delay)
                         self.accept_match()
-                except Exception as error:
-                    self.on_event("error", f"Auto Accept monitor: {error}")
+                except Exception:
+                    pass
 
             time.sleep(0.5)

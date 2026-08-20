@@ -1,20 +1,23 @@
 import { callAction, toggleFeature } from "../api.js";
-import { actionButton, card, el, inlineForm, statRow, toggleSwitch } from "../components.js";
-import { openConfirmModal } from "../modal.js";
+import { openChampionPicker } from "../champion-picker.js";
+import { actionButton, card, el, statRow, toggleSwitch } from "../components.js";
+import { openConfirmModal, openFormModal } from "../modal.js";
 import { openIconPicker } from "../icon-picker.js";
-import { refreshNow } from "../state.js";
-import { formatValue, isBooleanField, STATUS_FIELD_LABELS, statusPill } from "../status-format.js";
+import { openSkinPicker } from "../skin-picker.js";
+import { featureIcon } from "../icons.js";
+import { isLeagueConnected, onHealthUpdate, refreshNow } from "../state.js";
+import { formatSpecialDisplay, formatValue, isBooleanField, isSpecialDisplayField, STATUS_FIELD_LABELS, statusPill } from "../status-format.js";
 import { FEATURE_ACTIONS, FEATURE_TOGGLES } from "./forms.js";
 
 /**
  * Builds a full feature card: title/header, live status rows, one switch
  * per entry in FEATURE_TOGGLES (0, 1, or several), and one control per
- * entry in FEATURE_ACTIONS (inline form, plain button, icon picker, or
- * confirm-then-call for destructive actions). Every feature that has a
- * persistent on/off state gets the same switch treatment — see forms.js.
+ * entry in FEATURE_ACTIONS (modal form, plain button, icon picker, or
+ * confirm-then-call for destructive actions).
  */
 export function buildFeatureCard(meta, initialStatus) {
-  const { cardEl, body } = card({ title: meta.title });
+  const iconEl = featureIcon(meta.key);
+  const { cardEl, body } = card({ title: meta.title, iconEl });
 
   const statusSection = el("div", { class: "card-status" });
   const togglesSection = el("div", { class: "card-toggles" });
@@ -23,8 +26,7 @@ export function buildFeatureCard(meta, initialStatus) {
   body.appendChild(togglesSection);
   body.appendChild(controlsSection);
 
-  // Fields already shown as a switch below don't need to repeat as a status
-  // row too — that was making cards taller than they need to be.
+  // Fields already shown as a switch below don't need to repeat as a status row
   const toggleFields = new Set((FEATURE_TOGGLES[meta.key] || []).map((t) => t.field));
 
   function renderStatus(status) {
@@ -32,9 +34,17 @@ export function buildFeatureCard(meta, initialStatus) {
     for (const [field, value] of Object.entries(status || {})) {
       if (field === "key" || toggleFields.has(field)) continue;
       const label = STATUS_FIELD_LABELS[field] || field;
-      const row = isBooleanField(field, value)
-        ? statRowNode(label, statusPill(field, value))
-        : statRow(label, formatValue(value));
+      
+      let valueNode;
+      if (isBooleanField(field, value)) {
+        valueNode = statusPill(field, value);
+      } else if (isSpecialDisplayField(field, value)) {
+        valueNode = formatSpecialDisplay(field, value);
+      } else {
+        valueNode = formatValue(value);
+      }
+
+      const row = typeof valueNode === "string" ? statRow(label, valueNode) : statRowNode(label, valueNode);
       statusSection.appendChild(row);
     }
   }
@@ -48,9 +58,27 @@ export function buildFeatureCard(meta, initialStatus) {
     togglesSection.appendChild(row);
   }
 
+  const actionButtons = [];
   for (const actionDef of FEATURE_ACTIONS[meta.key] || []) {
-    controlsSection.appendChild(buildActionControl(meta.key, actionDef));
+    const btn = buildActionControl(meta.key, actionDef);
+    actionButtons.push(btn);
+    controlsSection.appendChild(btn);
   }
+
+  function applyLeagueState(connected) {
+    cardEl.classList.toggle("league-disconnected", !connected);
+    for (const { button } of toggleButtons) {
+      button.disabled = !connected;
+    }
+    for (const btn of actionButtons) {
+      btn.disabled = !connected;
+    }
+  }
+
+  applyLeagueState(isLeagueConnected());
+  onHealthUpdate((health) => {
+    applyLeagueState(Boolean(health?.league_connected));
+  });
 
   return {
     cardEl,
@@ -74,6 +102,7 @@ function statRowNode(label, valueNode) {
 function buildToggleRow(key, toggleDef, initialStatus) {
   const checked = toggleDef.invert ? !initialStatus?.[toggleDef.field] : Boolean(initialStatus?.[toggleDef.field]);
   const button = toggleSwitch(checked, async () => {
+    if (!isLeagueConnected()) return;
     button.disabled = true;
     try {
       if (toggleDef.action) {
@@ -82,8 +111,10 @@ function buildToggleRow(key, toggleDef, initialStatus) {
         await toggleFeature(key);
       }
       await refreshNow();
+    } catch {
+      // Ignore
     } finally {
-      button.disabled = false;
+      button.disabled = !isLeagueConnected();
     }
   });
   const row = el("div", { class: "card-switch-row" }, [el("span", { text: toggleDef.label }), button]);
@@ -91,20 +122,60 @@ function buildToggleRow(key, toggleDef, initialStatus) {
 }
 
 function buildActionControl(key, actionDef) {
+  if (actionDef.kind === "champion-picker") {
+    return actionButton(
+      actionDef.label,
+      async () => {
+        if (!isLeagueConnected()) return;
+        const champName = await openChampionPicker({
+          title: actionDef.pickerTitle || actionDef.label,
+          allowNone: actionDef.allowNone !== false,
+        });
+        if (champName === null) return;
+        try {
+          await callAction(key, actionDef.action, { [actionDef.paramName || "champion_name"]: champName });
+          await refreshNow();
+        } catch {
+          // Ignore
+        }
+      },
+      "secondary"
+    );
+  }
+
+  if (actionDef.kind === "skin-picker") {
+    return actionButton(
+      actionDef.label,
+      async () => {
+        if (!isLeagueConnected()) return;
+        const skinId = await openSkinPicker({ title: actionDef.modalTitle || "Choose Background" });
+        if (skinId === null) return;
+        try {
+          await callAction(key, actionDef.action, { skin_id: skinId });
+          await refreshNow();
+        } catch {
+          // Ignore
+        }
+      },
+      "secondary"
+    );
+  }
+
   if (actionDef.kind === "icon-picker") {
     return actionButton(
       actionDef.label,
       async () => {
+        if (!isLeagueConnected()) return;
         const iconId = await openIconPicker({ kind: actionDef.iconKind });
         if (iconId === null) return;
         try {
           await callAction(key, actionDef.action, { icon_id: iconId });
           await refreshNow();
-        } catch (error) {
-          alert(error.message);
+        } catch {
+          // Ignore
         }
       },
-      "primary"
+      "secondary"
     );
   }
 
@@ -112,50 +183,61 @@ function buildActionControl(key, actionDef) {
     return actionButton(
       actionDef.label,
       async () => {
+        if (!isLeagueConnected()) return;
+        const title = actionDef.modalTitle || actionDef.label;
         const confirmed = await openConfirmModal({
-          title: actionDef.label,
-          description: "Essa ação não pode ser desfeita. Confirmar?",
-          confirmLabel: actionDef.label,
+          title,
+          description: "This action cannot be undone. Are you sure?",
+          confirmLabel: title,
         });
         if (!confirmed) return;
         try {
           const result = await callAction(key, actionDef.action, {});
           if (actionDef.opensUrl && result.result) window.open(result.result, "_blank");
           await refreshNow();
-        } catch (error) {
-          alert(error.message);
+        } catch {
+          // Ignore
         }
       },
       "danger"
     );
   }
 
-  if (actionDef.fields.length === 0) {
+  if (actionDef.fields && actionDef.fields.length > 0) {
     return actionButton(
       actionDef.label,
       async () => {
+        if (!isLeagueConnected()) return;
+        const title = actionDef.modalTitle || actionDef.label;
+        const values = await openFormModal({
+          title,
+          fields: actionDef.fields,
+          submitLabel: actionDef.label,
+        });
+        if (!values) return;
         try {
-          const result = await callAction(key, actionDef.action, {});
-          if (actionDef.opensUrl && result.result) window.open(result.result, "_blank");
+          await callAction(key, actionDef.action, values);
           await refreshNow();
-        } catch (error) {
-          alert(error.message);
+        } catch {
+          // Ignore
         }
       },
-      actionDef.quiet ? "secondary" : "primary"
+      "secondary"
     );
   }
 
-  const wrapper = el("div", { class: "card-action-form" }, [el("p", { class: "card-action-label", text: actionDef.label })]);
-  wrapper.appendChild(
-    inlineForm({
-      fields: actionDef.fields,
-      submitLabel: actionDef.label,
-      onSubmit: async (values) => {
-        await callAction(key, actionDef.action, values);
+  return actionButton(
+    actionDef.label,
+    async () => {
+      if (!isLeagueConnected()) return;
+      try {
+        const result = await callAction(key, actionDef.action, {});
+        if (actionDef.opensUrl && result.result) window.open(result.result, "_blank");
         await refreshNow();
-      },
-    })
+      } catch {
+        // Ignore
+      }
+    },
+    actionDef.quiet ? "secondary" : "primary"
   );
-  return wrapper;
 }

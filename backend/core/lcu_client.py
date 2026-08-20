@@ -23,38 +23,51 @@ def _split_arg(arg, prefix):
 
 
 def find_league_client_credentials():
-    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-        info = proc.info
-        if info.get("name") != "LeagueClientUx.exe":
-            continue
+    try:
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                info = proc.info
+                name = info.get("name") or ""
+                if name.lower() != "leagueclientux.exe":
+                    continue
 
-        port = None
-        token = None
-        for arg in info.get("cmdline") or []:
-            port = port or _split_arg(arg, "--app-port=")
-            token = token or _split_arg(arg, "--remoting-auth-token=")
+                port = None
+                token = None
+                for arg in info.get("cmdline") or []:
+                    port = port or _split_arg(arg, "--app-port=")
+                    token = token or _split_arg(arg, "--remoting-auth-token=")
 
-        if port and token:
-            return port, token
+                if port and token:
+                    return port, token
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+    except Exception:
+        pass
 
     return None, None
 
 
 def find_riot_client_credentials():
-    for process in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
-        info = process.info
-        name = info.get("name") or ""
-        if "LeagueClientUx" not in name:
-            continue
+    try:
+        for process in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
+            try:
+                info = process.info
+                name = info.get("name") or ""
+                if "leagueclientux" not in name.lower():
+                    continue
 
-        port = None
-        token = None
-        for arg in info.get("cmdline") or []:
-            token = token or _split_arg(arg, "--riotclient-auth-token=")
-            port = port or _split_arg(arg, "--riotclient-app-port=")
+                port = None
+                token = None
+                for arg in info.get("cmdline") or []:
+                    token = token or _split_arg(arg, "--riotclient-auth-token=")
+                    port = port or _split_arg(arg, "--riotclient-app-port=")
 
-        if port and token:
-            return port, token
+                if port and token:
+                    return port, token
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+    except Exception:
+        pass
 
     return None, None
 
@@ -78,6 +91,14 @@ class LCUClient:
     """
 
     def __init__(self):
+        self.league_port = None
+        self.league_token = None
+        self.league_url = None
+        self.league_headers = {}
+        self.riot_port = None
+        self.riot_token = None
+        self.riot_url = None
+        self.riot_headers = {}
         self.update_league_credentials()
         self.update_riot_credentials()
 
@@ -92,7 +113,12 @@ class LCUClient:
         self.riot_headers = _headers(self.riot_token)
 
     def is_league_connected(self):
+        self.update_league_credentials()
         return bool(self.league_url)
+
+    def is_riot_connected(self):
+        self.update_riot_credentials()
+        return bool(self.riot_url)
 
     def _service_connection(self, service):
         if service == "league":

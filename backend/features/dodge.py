@@ -10,7 +10,7 @@ DODGE_REQUEST_COUNT = 5
 class Dodge(Feature):
     key = "dodge"
     title = "Dodge"
-    category = "Game Tools"
+    category = "Automation"
 
     def get_status(self) -> dict:
         return {"key": self.key}

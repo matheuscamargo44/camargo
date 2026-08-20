@@ -1,4 +1,5 @@
 import { el } from "../components.js";
+import { icon } from "../icons.js";
 import { getFeatureMeta, onFeaturesUpdate } from "../state.js";
 import { CATEGORY_LABELS } from "./categories.js";
 import { buildFeatureCard } from "./feature-card.js";
@@ -18,7 +19,12 @@ export function renderCategoryScreen(root, { categories }) {
   }
 
   if (metaByCategory.size === 0) {
-    root.appendChild(el("p", { class: "empty-state", text: "Backend indisponível ou nenhuma feature encontrada." }));
+    root.appendChild(
+      el("div", { class: "empty-state" }, [
+        icon("monitor"),
+        el("span", { text: "Backend offline or no features found." }),
+      ])
+    );
     return;
   }
 
@@ -28,7 +34,6 @@ export function renderCategoryScreen(root, { categories }) {
     const metas = metaByCategory.get(category);
     if (!metas || metas.length === 0) continue;
 
-    root.appendChild(el("h2", { class: "section-title", text: CATEGORY_LABELS[category] || category }));
     const grid = el("div", { class: "card-grid" });
 
     for (const meta of metas) {

@@ -11,6 +11,10 @@ export function getFeatureMeta() {
   return featureMeta;
 }
 
+export function isLeagueConnected() {
+  return Boolean(latestHealth && latestHealth.league_connected);
+}
+
 export function onFeaturesUpdate(callback) {
   featureSubscribers.add(callback);
   callback(latestFeatures);

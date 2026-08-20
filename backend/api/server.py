@@ -55,6 +55,41 @@ def health():
     return {"status": "ok", "league_connected": registry.lcu.is_league_connected()}
 
 
+@app.get("/summoner")
+def get_summoner():
+    if not registry.lcu.is_league_connected():
+        return {"connected": False}
+    try:
+        res = registry.lcu.lcu_request("GET", "/lol-summoner/v1/current-summoner")
+        if res.status_code == 200:
+            data = res.json()
+            ranked_tier = "UNRANKED"
+            ranked_division = ""
+            try:
+                ranked_res = registry.lcu.lcu_request("GET", "/lol-ranked/v1/current-ranked-stats")
+                if ranked_res.status_code == 200:
+                    queues = ranked_res.json().get("queues", [])
+                    solo = next((q for q in queues if q.get("queueType") == "RANKED_SOLO_5x5"), None)
+                    if solo and solo.get("tier"):
+                        ranked_tier = solo.get("tier", "UNRANKED")
+                        ranked_division = solo.get("division", "")
+            except Exception:
+                pass
+
+            return {
+                "connected": True,
+                "display_name": data.get("gameName") or data.get("displayName") or "",
+                "tag_line": data.get("tagLine") or "",
+                "summoner_level": data.get("summonerLevel", 1),
+                "profile_icon_id": data.get("profileIconId", 1),
+                "ranked_tier": ranked_tier,
+                "ranked_division": ranked_division,
+            }
+    except Exception:
+        pass
+    return {"connected": False}
+
+
 @app.get("/features")
 def list_features():
     return registry.status()
@@ -70,6 +105,9 @@ def list_features_meta():
 
 @app.post("/features/{key}/toggle")
 def toggle_feature(key: str):
+    if not registry.lcu.is_league_connected():
+        raise HTTPException(status_code=503, detail="League client is not detected")
+
     try:
         feature = registry.get(key)
     except KeyError as exc:
@@ -86,8 +124,11 @@ def toggle_feature(key: str):
 @app.post("/features/{key}/actions/{action_name}")
 def call_feature_action(key: str, action_name: str, params: dict = Body(default={})):
     """Generic dispatch for feature-specific actions (e.g. changing an icon,
-    configuring ragequeue). `params` keys must match the method's kwargs.
+    setting instalock champion). `params` keys must match the method's kwargs.
     """
+    if not registry.lcu.is_league_connected():
+        raise HTTPException(status_code=503, detail="League client is not detected")
+
     try:
         feature = registry.get(key)
     except KeyError as exc:

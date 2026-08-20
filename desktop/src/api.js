@@ -6,6 +6,12 @@ export async function fetchHealth() {
   return response.json();
 }
 
+export async function fetchSummoner() {
+  const response = await fetch(`${BASE_URL}/summoner`).catch(() => null);
+  if (!response || !response.ok) return { connected: false };
+  return response.json();
+}
+
 export async function fetchFeatureMeta() {
   const response = await fetch(`${BASE_URL}/features/meta`);
   if (!response.ok) throw new Error(`Failed to load feature metadata (HTTP ${response.status})`);

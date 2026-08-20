@@ -18,7 +18,7 @@ def test_load_config_preserves_existing_values(tmp_path, monkeypatch):
     loaded = config_module.load_config()
 
     assert loaded["auto_accept"]["enabled"] is True
-    assert loaded["instalock"]["champion"] == "Random"
+    assert loaded["instalock"]["champion"] == "None"
 
 
 def test_get_automation_delay_clamps_range():

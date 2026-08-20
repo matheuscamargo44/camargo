@@ -15,7 +15,7 @@ class InstalockAutoban(Feature):
         super().__init__(lcu_client, config, on_event)
         self.champ_dict = {}
         self.instalock_enabled = bool(self.config["instalock"].get("enabled"))
-        self.instalock_champion = self.config["instalock"].get("champion", "Random")
+        self.instalock_champion = self.config["instalock"].get("champion", "None")
         self.auto_ban_enabled = bool(self.config["autoban"].get("enabled"))
         self.auto_ban_champion = self.config["autoban"].get("champion", "None")
         self._thread = None
@@ -57,26 +57,31 @@ class InstalockAutoban(Feature):
         return self.champ_dict.get(champ_name.lower(), -1)
 
     def set_instalock_champion(self, champion_name):
-        if champion_name.lower() == "random":
-            self.instalock_champion = "Random"
+        if champion_name.lower() == "none":
+            self.instalock_champion = "None"
+            self.instalock_enabled = False
         else:
             if not self.champ_dict:
                 self.update_champion_list()
             if self.champ_name_to_id(champion_name) == -1:
                 raise ValueError(f"Champion '{champion_name}' was not found")
             self.instalock_champion = champion_name
-        self.instalock_enabled = True
+            self.instalock_enabled = True
         self._save_settings()
         self.on_event("success", f"Instalock configured for {self.instalock_champion}")
         return self.instalock_champion
 
     def set_auto_ban_champion(self, champion_name):
-        if not self.champ_dict:
-            self.update_champion_list()
-        if self.champ_name_to_id(champion_name) == -1:
-            raise ValueError(f"Champion '{champion_name}' was not found")
-        self.auto_ban_champion = champion_name
-        self.auto_ban_enabled = True
+        if champion_name.lower() == "none":
+            self.auto_ban_champion = "None"
+            self.auto_ban_enabled = False
+        else:
+            if not self.champ_dict:
+                self.update_champion_list()
+            if self.champ_name_to_id(champion_name) == -1:
+                raise ValueError(f"Champion '{champion_name}' was not found")
+            self.auto_ban_champion = champion_name
+            self.auto_ban_enabled = True
         self._save_settings()
         self.on_event("success", f"AutoBan configured for {self.auto_ban_champion}")
         return self.auto_ban_champion
@@ -107,7 +112,10 @@ class InstalockAutoban(Feature):
         while self._running:
             try:
                 if not self.instalock_enabled and not self.auto_ban_enabled:
-                    time.sleep(0.3)
+                    time.sleep(0.5)
+                    continue
+                if not self.lcu.is_league_connected():
+                    time.sleep(2)
                     continue
                 if not self.champ_dict:
                     self.update_champion_list()
@@ -143,19 +151,19 @@ class InstalockAutoban(Feature):
                             self._ban_champion(action)
 
                 time.sleep(0.3)
-            except Exception as error:
-                self.on_event("error", f"Champion select monitor: {error}")
+            except Exception:
                 time.sleep(1)
 
     def _lock_champion(self, action):
+        if self.instalock_champion == "None":
+            return
         delay = get_automation_delay(self.config, "instalock", 0.3)
         if delay:
             time.sleep(delay)
 
-        if self.instalock_champion == "Random":
-            champion_id = random.choice(list(self.champ_dict.items()))[1]
-        else:
-            champion_id = self.champ_name_to_id(self.instalock_champion)
+        champion_id = self.champ_name_to_id(self.instalock_champion)
+        if champion_id == -1:
+            return
 
         response = self.lcu.lcu_request(
             "PATCH",
@@ -168,11 +176,16 @@ class InstalockAutoban(Feature):
         time.sleep(0.3)
 
     def _ban_champion(self, action):
+        if self.auto_ban_champion == "None":
+            return
         delay = get_automation_delay(self.config, "autoban", 0.3)
         if delay:
             time.sleep(delay)
 
         champion_id = self.champ_name_to_id(self.auto_ban_champion)
+        if champion_id == -1:
+            return
+
         response = self.lcu.lcu_request(
             "PATCH",
             f"/lol-champ-select/v1/session/actions/{action['id']}",

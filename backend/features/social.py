@@ -41,7 +41,7 @@ class RemoveFriends(Feature):
 class RestartUX(Feature):
     key = "restart_ux"
     title = "Restart Client UX"
-    category = "Settings"
+    category = "Social"
 
     def get_status(self) -> dict:
         return {"key": self.key}
@@ -55,8 +55,8 @@ class RestartUX(Feature):
 
 class ChatToggle(Feature):
     key = "chat_toggle"
-    title = "Disconnect/Reconnect Chat"
-    category = "Settings"
+    title = "Chat"
+    category = "Social"
 
     def __init__(self, lcu_client, config, on_event=None):
         super().__init__(lcu_client, config, on_event)

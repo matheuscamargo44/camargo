@@ -1,4 +1,5 @@
 import { el } from "../components.js";
+import { startEventStream } from "../event-stream.js";
 import { mountLeagueStatus } from "../league-status.js";
 import { registerRoute, startRouter } from "../router.js";
 import { startPolling } from "../state.js";
@@ -10,6 +11,8 @@ import { renderSocialView } from "./social.js";
 const navRoot = document.getElementById("nav-links");
 const viewRoot = document.getElementById("view-root");
 const leagueStatusSlot = document.getElementById("league-status-slot");
+const loadingScreen = document.getElementById("loading-screen");
+const topbar = document.getElementById("topbar");
 
 function buildNav() {
   for (const item of NAV_ITEMS) {
@@ -20,11 +23,25 @@ function buildNav() {
   }
 }
 
+function hideLoadingScreen() {
+  if (!loadingScreen) return;
+  loadingScreen.classList.add("fade-out");
+  loadingScreen.addEventListener("transitionend", () => loadingScreen.remove(), { once: true });
+  // Fallback removal
+  setTimeout(() => { if (loadingScreen.parentNode) loadingScreen.remove(); }, 600);
+}
+
 async function bootstrap() {
   await startPolling();
 
+  // Reveal the UI
+  hideLoadingScreen();
+  if (topbar) topbar.hidden = false;
+
   buildNav();
   mountLeagueStatus(leagueStatusSlot);
+  startEventStream();
+
   registerRoute("/automation", renderAutomationView);
   registerRoute("/customization", renderCustomizationView);
   registerRoute("/social", renderSocialView);

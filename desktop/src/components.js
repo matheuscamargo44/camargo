@@ -16,13 +16,23 @@ export function el(tag, props = {}, children = []) {
   return node;
 }
 
-export function card({ title, subtitle }) {
-  const header = el("div", { class: "card-header" }, [
+export function card({ title, subtitle, iconEl }) {
+  const header = el("div", { class: "card-header" });
+
+  if (iconEl) {
+    const iconWrap = el("div", { class: "card-icon" });
+    iconWrap.appendChild(iconEl);
+    header.appendChild(iconWrap);
+  }
+
+  const textWrap = el("div", { class: "card-header-text" }, [
     el("h3", { text: title }),
     subtitle ? el("p", { class: "card-subtitle", text: subtitle }) : null,
   ]);
+  header.appendChild(textWrap);
+
   const body = el("div", { class: "card-body" });
-  const cardEl = el("section", { class: "card" }, [header, body]);
+  const cardEl = el("section", { class: "card", "aria-label": title }, [header, body]);
   return { cardEl, body };
 }
 
@@ -52,7 +62,7 @@ function buildField(field) {
  * Builds an inline form (used directly inside a screen, not a modal).
  * Returns the form element; call form.reset() manually if desired.
  */
-export function inlineForm({ fields = [], submitLabel = "Aplicar", onSubmit, tone = "primary" }) {
+export function inlineForm({ fields = [], submitLabel = "Apply", onSubmit, tone = "primary" }) {
   const form = el("form", { class: "inline-form" });
   for (const field of fields) form.appendChild(buildField(field));
 
@@ -90,6 +100,7 @@ export function actionButton(label, onClick, tone = "secondary") {
 export function toggleSwitch(checked, onClick) {
   const button = el("button", {
     class: `switch ${checked ? "switch-on" : "switch-off"}`,
+    role: "switch",
     onClick,
   }, [el("span", { class: "switch-knob" })]);
   button.setAttribute("aria-pressed", String(checked));

@@ -4,26 +4,23 @@ and nothing else needs to change in the API or the client.
 from core.config import load_config
 from core.lcu_client import LCUClient
 from features.auto_accept import AutoAccept
-from features.customization import Background, Badges, ClientIcon, ProfileIcon, RiotId, StatusMessage
+from features.customization import Background, Badges, ClientIcon, ProfileIcon, StatusMessage
 from features.dodge import Dodge
 from features.instalock_autoban import InstalockAutoban
-from features.ragequeue import RageQueue
 from features.social import ChatToggle, RemoveFriends, RestartUX
 
 FEATURE_CLASSES = [
     AutoAccept,
-    InstalockAutoban,
     Dodge,
-    RageQueue,
+    InstalockAutoban,
     ProfileIcon,
     ClientIcon,
     Background,
     Badges,
-    RiotId,
     StatusMessage,
+    ChatToggle,
     RemoveFriends,
     RestartUX,
-    ChatToggle,
 ]
 
 

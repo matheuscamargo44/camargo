@@ -34,7 +34,7 @@ CONFIG_LOCK = threading.RLock()
 DEFAULT_CONFIG = {
     "instalock": {
         "enabled": False,
-        "champion": "Random",
+        "champion": "None",
         "delay_seconds": 0.3,
     },
     "autoban": {
@@ -45,12 +45,6 @@ DEFAULT_CONFIG = {
     "auto_accept": {
         "enabled": False,
         "delay_seconds": 0.0,
-    },
-    "ragequeue": {
-        "enabled": False,
-        "queue_id": 420,
-        "first_position": None,
-        "second_position": None,
     },
 }
 
@@ -73,10 +67,16 @@ def _merge_defaults(config, defaults):
         return merged
 
     for key, value in config.items():
+        if key not in defaults:
+            continue
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
             merged[key] = _merge_defaults(value, merged[key])
         else:
             merged[key] = value
+
+    # Migrate any legacy "Random" setting to "None"
+    if merged.get("instalock", {}).get("champion") == "Random":
+        merged["instalock"]["champion"] = "None"
 
     return merged
 

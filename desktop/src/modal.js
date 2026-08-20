@@ -1,10 +1,12 @@
 let overlayEl = null;
+let closeCallback = null;
 
 function ensureOverlay() {
   if (overlayEl) return overlayEl;
   overlayEl = document.createElement("div");
   overlayEl.className = "modal-overlay";
-  overlayEl.hidden = true;
+  overlayEl.setAttribute("role", "dialog");
+  overlayEl.setAttribute("aria-modal", "true");
   overlayEl.onclick = (event) => {
     if (event.target === overlayEl) closeModal();
   };
@@ -12,11 +14,73 @@ function ensureOverlay() {
   return overlayEl;
 }
 
+function onKeyDown(event) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeModal();
+  }
+  // Focus trap
+  if (event.key === "Tab" && overlayEl && !overlayEl.hidden) {
+    const focusable = overlayEl.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey) {
+      if (document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  }
+}
+
+/**
+ * Opens the shared modal overlay with animated transition.
+ * Returns the overlay element to append content into.
+ * Pass a `onClose` callback that will be called when the modal is dismissed.
+ */
+export function openOverlay(onClose) {
+  const overlay = ensureOverlay();
+  overlay.innerHTML = "";
+  overlay.hidden = false;
+  closeCallback = onClose || null;
+
+  // Trigger animation on next frame
+  requestAnimationFrame(() => {
+    overlay.classList.add("modal-visible");
+  });
+
+  document.addEventListener("keydown", onKeyDown);
+  return overlay;
+}
+
 export function closeModal() {
-  if (overlayEl) {
+  if (!overlayEl) return;
+
+  overlayEl.classList.remove("modal-visible");
+
+  const cb = closeCallback;
+  closeCallback = null;
+
+  const onEnd = () => {
+    overlayEl.removeEventListener("transitionend", onEnd);
     overlayEl.hidden = true;
     overlayEl.innerHTML = "";
-  }
+    document.removeEventListener("keydown", onKeyDown);
+    if (typeof cb === "function") cb();
+  };
+
+  overlayEl.addEventListener("transitionend", onEnd);
+
+  // Fallback in case transitionend doesn't fire
+  setTimeout(onEnd, 400);
 }
 
 function buildField(field) {
@@ -34,11 +98,17 @@ function buildField(field) {
       const optionEl = document.createElement("option");
       optionEl.value = option.value;
       optionEl.textContent = option.label;
+      if (field.value !== undefined && String(option.value) === String(field.value)) {
+        optionEl.selected = true;
+      }
       input.appendChild(optionEl);
     }
   } else {
     input = document.createElement("input");
     input.type = field.type || "text";
+    if (field.value !== undefined && field.value !== null) {
+      input.value = field.value;
+    }
   }
   input.name = field.name;
   if (field.placeholder) input.placeholder = field.placeholder;
@@ -51,11 +121,24 @@ function buildField(field) {
  * Opens a modal built from a field list. Resolves with the field values
  * (object) when submitted, or null when cancelled.
  */
-export function openFormModal({ title, description, fields = [], submitLabel = "Confirmar" }) {
+export function openFormModal({ title, description, fields = [], submitLabel = "Confirm" }) {
   return new Promise((resolve) => {
-    const overlay = ensureOverlay();
-    overlay.innerHTML = "";
-    overlay.hidden = false;
+    let resolved = false;
+
+    function finish(value) {
+      if (resolved) return;
+      resolved = true;
+      closeModal();
+      resolve(value);
+    }
+
+    const overlay = openOverlay(() => {
+      // Called when modal is closed without submitting
+      if (!resolved) {
+        resolved = true;
+        resolve(null);
+      }
+    });
 
     const box = document.createElement("div");
     box.className = "modal-box";
@@ -86,11 +169,8 @@ export function openFormModal({ title, description, fields = [], submitLabel = "
 
     const cancelButton = document.createElement("button");
     cancelButton.type = "button";
-    cancelButton.textContent = "Cancelar";
-    cancelButton.onclick = () => {
-      closeModal();
-      resolve(null);
-    };
+    cancelButton.textContent = "Cancel";
+    cancelButton.onclick = () => finish(null);
 
     const submitButton = document.createElement("button");
     submitButton.type = "submit";
@@ -104,8 +184,7 @@ export function openFormModal({ title, description, fields = [], submitLabel = "
     form.onsubmit = (event) => {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(form).entries());
-      closeModal();
-      resolve(data);
+      finish(data);
     };
 
     box.appendChild(form);
@@ -116,7 +195,7 @@ export function openFormModal({ title, description, fields = [], submitLabel = "
   });
 }
 
-export function openConfirmModal({ title, description, confirmLabel = "Confirmar" }) {
+export function openConfirmModal({ title, description, confirmLabel = "Confirm" }) {
   return openFormModal({ title, description, fields: [], submitLabel: confirmLabel }).then(
     (result) => result !== null
   );
