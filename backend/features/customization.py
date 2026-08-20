@@ -1,0 +1,207 @@
+"""Stateless customization actions: profile icon, client icon, background,
+badges, Riot ID and status message. Grouped in one module since each is a
+single LCU call with no monitoring loop, unlike the automation features.
+"""
+import requests
+
+from features.base import Feature
+
+BADGE_MODES = {"empty", "copy", "glitched"}
+SKINS_URL = (
+    "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/"
+    "global/default/v1/skins.json"
+)
+
+
+class ProfileIcon(Feature):
+    key = "profile_icon"
+    title = "Profile Icon"
+    category = "Customization"
+
+    def get_status(self) -> dict:
+        return {"key": self.key}
+
+    def change(self, icon_id):
+        icon_id = int(icon_id)
+        if icon_id < 1:
+            raise ValueError("Icon ID must be a positive number")
+
+        response = self.lcu.lcu_request(
+            "PUT", "/lol-summoner/v1/current-summoner/icon", {"profileIconId": icon_id}
+        )
+        if response.status_code not in (200, 201):
+            raise RuntimeError(f"Could not change profile icon (HTTP {response.status_code})")
+        self.on_event("success", f"Profile icon changed to {icon_id}")
+        return icon_id
+
+
+class ClientIcon(Feature):
+    key = "client_icon"
+    title = "Client Icon"
+    category = "Customization"
+
+    def get_status(self) -> dict:
+        return {"key": self.key}
+
+    def change(self, icon_id):
+        icon_id = int(icon_id)
+        if icon_id < 1:
+            raise ValueError("Icon ID must be a positive number")
+
+        response = self.lcu.lcu_request("PUT", "/lol-chat/v1/me", {"icon": icon_id})
+        if response.status_code not in (200, 201):
+            raise RuntimeError(f"Could not change client icon (HTTP {response.status_code})")
+        self.on_event("success", f"Client icon changed to {icon_id}")
+        return icon_id
+
+
+class Background(Feature):
+    key = "background"
+    title = "Profile Background"
+    category = "Customization"
+
+    def get_status(self) -> dict:
+        return {"key": self.key}
+
+    @staticmethod
+    def fetch_all_champion_skins():
+        response = requests.get(SKINS_URL, timeout=10)
+        if response.status_code != 200:
+            raise RuntimeError(f"Could not fetch skins (HTTP {response.status_code})")
+
+        skins = []
+        for skin_id, skin_data in response.json().items():
+            load_screen_path = skin_data.get("loadScreenPath", "")
+            marker = "ASSETS/Characters/"
+            marker_start = load_screen_path.find(marker)
+            if marker_start == -1:
+                champion_name = "Unknown"
+            else:
+                name_start = marker_start + len(marker)
+                name_end = load_screen_path.find("/", name_start)
+                champion_name = load_screen_path[name_start:name_end]
+
+            if skin_data.get("questSkinInfo"):
+                for tier in skin_data["questSkinInfo"].get("tiers", []):
+                    skins.append(
+                        {"id": str(tier.get("id", "")), "name": tier.get("name", ""), "champion": champion_name}
+                    )
+            else:
+                skins.append(
+                    {
+                        "id": str(skin_id),
+                        "name": "Default" if skin_data.get("isBase") else skin_data.get("name", ""),
+                        "champion": champion_name,
+                    }
+                )
+        return skins
+
+    @staticmethod
+    def search_skins_by_name(skins, search_query):
+        query = search_query.strip().lower()
+        if not query:
+            return []
+        return [s for s in skins if query in s["champion"].lower() or query in s["name"].lower()]
+
+    def change(self, skin_id):
+        skin_id = int(skin_id)
+        response = self.lcu.lcu_request(
+            "POST",
+            "/lol-summoner/v1/current-summoner/summoner-profile",
+            {"key": "backgroundSkinId", "value": skin_id},
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"Could not change profile background (HTTP {response.status_code})")
+        self.on_event("success", f"Profile background changed to skin {skin_id}")
+        return skin_id
+
+
+class Badges(Feature):
+    key = "badges"
+    title = "Profile Badges"
+    category = "Customization"
+
+    def get_status(self) -> dict:
+        return {"key": self.key}
+
+    def _get_player_data(self):
+        response = self.lcu.lcu_request("GET", "/lol-challenges/v1/summary-player-data/local-player")
+        if response.status_code != 200:
+            raise RuntimeError(f"Could not read profile badges (HTTP {response.status_code})")
+        return response.json()
+
+    def change(self, mode, glitched_id=None):
+        if mode not in BADGE_MODES:
+            raise ValueError("Unknown badge mode")
+
+        data = self._get_player_data()
+        top_challenges = data.get("topChallenges", [])
+
+        if mode == "empty":
+            challenge_ids = []
+        elif mode == "copy":
+            if not top_challenges:
+                raise ValueError("There are no badges to copy")
+            challenge_ids = [int(top_challenges[0]["id"])] * 3
+        else:
+            glitched_id = int(glitched_id)
+            if not 0 <= glitched_id <= 5:
+                raise ValueError("Glitched badge ID must be between 0 and 5")
+            challenge_ids = [glitched_id] * 3
+
+        payload = {"challengeIds": challenge_ids}
+        title_id = data.get("title", {}).get("itemId", -1)
+        banner_id = data.get("bannerId", "")
+        if title_id != -1:
+            payload["title"] = str(title_id)
+        if banner_id:
+            payload["bannerAccent"] = banner_id
+
+        response = self.lcu.lcu_request("POST", "/lol-challenges/v1/update-player-preferences/", payload)
+        if response.status_code not in (200, 201, 204):
+            raise RuntimeError(f"Could not update profile badges (HTTP {response.status_code})")
+        self.on_event("success", f"Profile badges updated ({mode})")
+        return challenge_ids
+
+
+class RiotId(Feature):
+    key = "riot_id"
+    title = "Riot ID"
+    category = "Customization"
+
+    def get_status(self) -> dict:
+        return {"key": self.key}
+
+    def change(self, name, tag):
+        name = name.strip()
+        tag = tag.strip().lstrip("#")
+        if not name or not tag:
+            raise ValueError("Name and tag are required")
+        if len(name) > 16:
+            raise ValueError("Name must be 16 characters or fewer")
+        if len(tag) > 5:
+            raise ValueError("Tag must be 5 characters or fewer")
+
+        response = self.lcu.lcu_request(
+            "POST", "/lol-summoner/v1/save-alias", {"gameName": name, "tagLine": tag}
+        )
+        if not 200 <= response.status_code < 300:
+            raise RuntimeError(f"Could not change Riot ID (HTTP {response.status_code})")
+        self.on_event("success", f"Riot ID changed to {name}#{tag}")
+        return f"{name}#{tag}"
+
+
+class StatusMessage(Feature):
+    key = "status_message"
+    title = "Status Message"
+    category = "Customization"
+
+    def get_status(self) -> dict:
+        return {"key": self.key}
+
+    def change(self, status):
+        response = self.lcu.lcu_request("PUT", "/lol-chat/v1/me", {"statusMessage": status})
+        if not 200 <= response.status_code < 300:
+            raise RuntimeError(f"Could not change status message (HTTP {response.status_code})")
+        self.on_event("success", "Status message updated")
+        return status

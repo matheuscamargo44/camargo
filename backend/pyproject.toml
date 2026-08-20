@@ -1,0 +1,23 @@
+[project]
+name = "camargo"
+version = "0.1.0"
+description = "LCU toolkit for League of Legends - backend service"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "psutil==7.1.3",
+    "requests==2.32.5",
+    "urllib3==2.5.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "httpx>=0.27.0",
+    "pyinstaller>=6.22.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

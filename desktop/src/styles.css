@@ -1,0 +1,210 @@
+:root {
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --surface-hover: #161616;
+  --border: #2a2a2a;
+  --border-strong: #444444;
+  --text: #ffffff;
+  --text-muted: #8a8a8a;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+#app-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 1fr;
+  grid-template-areas: "sidebar main";
+  height: 100vh;
+}
+
+aside#sidebar {
+  grid-area: sidebar;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  padding: 20px 12px;
+}
+
+#nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  padding: 9px 12px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 13px;
+}
+.nav-link:hover { background: var(--surface); color: var(--text); }
+.nav-link.active { background: var(--surface); color: var(--text); }
+
+main#view-root {
+  grid-area: main;
+  padding: 24px 28px;
+  overflow-y: auto;
+}
+
+.view-title { font-size: 20px; margin: 0 0 16px; }
+.section-title { font-size: 13px; letter-spacing: 0.01em; color: var(--text-muted); margin: 24px 0 12px; }
+.section-title:first-of-type { margin-top: 0; }
+
+.empty-state { color: var(--text-muted); }
+
+.card-grid, .overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card-header h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.card-subtitle { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
+
+.card-body { display: flex; flex-direction: column; gap: 12px; }
+.card-status { display: flex; flex-direction: column; gap: 4px; }
+.stat-row { display: flex; justify-content: space-between; font-size: 12px; }
+.stat-label { color: var(--text-muted); }
+.stat-value { font-weight: 600; }
+
+.card-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.card-controls { display: flex; flex-direction: column; gap: 10px; }
+.card-action-label { margin: 0 0 6px; font-size: 12px; color: var(--text-muted); }
+
+.inline-form { display: flex; flex-direction: column; gap: 8px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-muted); }
+.field input, .field select, .field textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none;
+  border-color: var(--text);
+}
+.field-error { color: var(--text); font-size: 12px; margin: 0; font-weight: 600; }
+.inline-form-actions { display: flex; justify-content: flex-end; }
+
+.btn {
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition: filter 0.15s ease, background 0.15s ease;
+}
+.btn:hover { filter: brightness(1.15); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn-primary { background: var(--text); color: #000000; border-color: var(--text); }
+.btn-secondary { background: var(--bg); color: var(--text); border-color: var(--border-strong); }
+.btn-danger { background: var(--bg); color: var(--text); border: 1px dashed var(--border-strong); }
+
+.switch {
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+}
+.switch-off { justify-content: flex-start; background: var(--bg); }
+.switch-on { justify-content: flex-end; background: var(--text); }
+.switch-knob { width: 18px; height: 18px; border-radius: 50%; display: block; }
+.switch-off .switch-knob { background: var(--text-muted); }
+.switch-on .switch-knob { background: #000000; }
+
+.overview-card {
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.overview-card:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.overview-card h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.overview-card-status { margin: 0; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modal-box {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  width: 320px;
+}
+.modal-box h2 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.modal-description { color: var(--text-muted); font-size: 12px; margin: 0 0 14px; }
+.modal-field { display: block; margin-bottom: 12px; font-size: 12px; color: var(--text-muted); }
+.modal-field input, .modal-field select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  box-sizing: border-box;
+  font-size: 13px;
+}
+.modal-error { color: var(--text); font-size: 12px; font-weight: 600; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.modal-actions button {
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text);
+}
+.modal-actions button.primary { background: var(--text); color: #000000; }

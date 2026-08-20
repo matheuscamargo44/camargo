@@ -1,0 +1,11 @@
+backend/.venv/
+backend/config.json
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/build/
+backend/dist/
+backend/camargo-backend.spec
+desktop/node_modules/
+desktop/release/
+**/__pycache__/

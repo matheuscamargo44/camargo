@@ -1,0 +1,45 @@
+{
+  "name": "camargo",
+  "productName": "Camargo",
+  "version": "0.1.0",
+  "description": "Desktop UI for the Camargo League of Legends LCU toolkit",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:backend": "cd ../backend && uv run pyinstaller --onefile --noconsole --noconfirm --name camargo-backend --distpath dist --workpath build --specpath . --paths . main.py",
+    "dist": "npm run build:backend && electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.camargo.app",
+    "productName": "Camargo",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "build/icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist/camargo-backend.exe",
+        "to": "backend/camargo-backend.exe"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}
