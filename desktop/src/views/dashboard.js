@@ -11,9 +11,7 @@ const CATEGORY_ROUTE = {
 
 function summarize(status) {
   const { key, ...rest } = status || {};
-  const entries = Object.entries(rest);
-  if (entries.length === 0) return "Sem estado";
-  return entries
+  return Object.entries(rest)
     .slice(0, 2)
     .map(([field, value]) => `${field}: ${value}`)
     .join(" · ");
@@ -22,7 +20,7 @@ function summarize(status) {
 function buildOverviewCard(meta) {
   return el("a", { class: "overview-card", href: CATEGORY_ROUTE[meta.category] || "#/dashboard" }, [
     el("h3", { text: meta.title }),
-    el("p", { class: "overview-card-status", text: "Carregando..." }),
+    el("p", { class: "overview-card-status" }),
   ]);
 }
 

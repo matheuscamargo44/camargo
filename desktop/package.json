@@ -1,8 +1,8 @@
 {
   "name": "camargo",
-  "productName": "Camargo",
+  "productName": "camargo",
   "version": "0.1.0",
-  "description": "Desktop UI for the Camargo League of Legends LCU toolkit",
+  "description": "Desktop UI for the camargo League of Legends LCU toolkit",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -15,7 +15,7 @@
   },
   "build": {
     "appId": "com.camargo.app",
-    "productName": "Camargo",
+    "productName": "camargo",
     "directories": {
       "output": "release"
     },
@@ -39,7 +39,9 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "artifactName": "camargo-setup-${version}.${ext}",
+      "shortcutName": "camargo"
     }
   }
 }

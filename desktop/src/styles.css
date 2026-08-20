@@ -20,30 +20,24 @@ body {
 }
 
 #app-shell {
-  display: grid;
-  grid-template-columns: 220px 1fr;
-  grid-template-rows: 1fr;
-  grid-template-areas: "sidebar main";
+  display: flex;
+  flex-direction: column;
   height: 100vh;
-}
-
-aside#sidebar {
-  grid-area: sidebar;
-  background: var(--bg);
-  border-right: 1px solid var(--border);
-  padding: 20px 12px;
 }
 
 #nav-links {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  gap: 4px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
 }
 
 .nav-link {
   display: flex;
   align-items: center;
-  padding: 9px 12px;
+  padding: 7px 12px;
   border-radius: 8px;
   color: var(--text-muted);
   text-decoration: none;
@@ -54,7 +48,7 @@ aside#sidebar {
 .nav-link.active { background: var(--surface); color: var(--text); }
 
 main#view-root {
-  grid-area: main;
+  flex: 1;
   padding: 24px 28px;
   overflow-y: auto;
 }
@@ -163,6 +157,7 @@ main#view-root {
 .overview-card:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .overview-card h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
 .overview-card-status { margin: 0; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overview-card-status:empty { display: none; }
 
 .modal-overlay {
   position: fixed;
