@@ -27,3 +27,21 @@ def test_get_automation_delay_clamps_range():
 
     config = {"auto_accept": {"delay_seconds": -5}}
     assert config_module.get_automation_delay(config, "auto_accept", 0.0) == 0.0
+
+
+def test_config_path_uses_appdata_when_frozen(monkeypatch, tmp_path):
+    monkeypatch.setattr(config_module.sys, "frozen", True, raising=False)
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+
+    path = config_module._config_path()
+
+    assert path == tmp_path / "camargo" / "config.json"
+
+
+def test_config_path_next_to_source_in_dev(monkeypatch):
+    monkeypatch.setattr(config_module.sys, "frozen", False, raising=False)
+
+    path = config_module._config_path()
+    expected_dir = config_module.Path(config_module.__file__).resolve().parent.parent
+
+    assert path == expected_dir / "config.json"

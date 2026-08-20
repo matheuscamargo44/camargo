@@ -1,14 +1,29 @@
-"""Persisted configuration for Camargo, stored as JSON next to the app."""
+"""Persisted configuration for Camargo.
+
+In development, config.json lives next to the backend source. In the
+packaged app, it's written under the OS user-data directory instead of the
+install folder — the install folder gets wiped and replaced on every
+upgrade (NSIS uninstalls the previous version first), so anything stored
+there would be lost each time the user updates the app.
+"""
 import copy
 import json
+import os
 import sys
 import threading
 from pathlib import Path
 
 
+def _user_data_dir():
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return Path(appdata) / "camargo"
+    return Path.home() / ".config" / "camargo"
+
+
 def _config_path():
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent / "config.json"
+        return _user_data_dir() / "config.json"
 
     return Path(__file__).resolve().parent.parent / "config.json"
 
