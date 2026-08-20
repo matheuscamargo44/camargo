@@ -103,27 +103,29 @@ main#view-root {
 }
 .league-status-compact.connected .league-status-dot { background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); }
 
-.card-grid, .overview-grid {
+.card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 300px));
+  gap: 12px;
 }
 
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  max-width: 300px;
 }
 
-.card-header h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.card-header h3 { margin: 0; font-size: 13px; font-weight: 600; }
 .card-subtitle { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
 
-.card-body { display: flex; flex-direction: column; gap: 12px; }
-.card-status { display: flex; flex-direction: column; gap: 6px; }
+.card-body { display: flex; flex-direction: column; gap: 10px; }
+.card-status { display: flex; flex-direction: column; gap: 4px; }
+.card-status:empty { display: none; }
 .stat-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
 .stat-label { color: var(--text-muted); }
 .stat-value { font-weight: 600; }
@@ -151,6 +153,9 @@ main#view-root {
 }
 .status-pill.on { background: var(--success-soft); color: var(--success); }
 
+/* One row per switch — every feature with on/off state gets one, consistently */
+.card-toggles { display: flex; flex-direction: column; gap: 6px; }
+.card-toggles:empty { display: none; }
 .card-switch-row {
   display: flex;
   align-items: center;
@@ -159,7 +164,8 @@ main#view-root {
   color: var(--text-muted);
 }
 
-.card-controls { display: flex; flex-direction: column; gap: 10px; }
+.card-controls { display: flex; flex-direction: column; gap: 8px; }
+.card-controls:empty { display: none; }
 .card-action-label { margin: 0 0 6px; font-size: 12px; color: var(--text-muted); }
 
 .inline-form { display: flex; flex-direction: column; gap: 8px; }
@@ -210,29 +216,6 @@ main#view-root {
 .switch-on { justify-content: flex-end; background: var(--success); border-color: transparent; }
 .switch-knob { width: 18px; height: 18px; border-radius: 50%; display: block; background: var(--text); }
 .switch-on .switch-knob { background: #04140a; }
-
-.overview-card {
-  display: block;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-  text-decoration: none;
-  color: inherit;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-.overview-card:hover { border-color: var(--accent); background: var(--surface-hover); }
-.overview-card h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
-.overview-card-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
-  overflow: hidden;
-}
-.overview-card-status:empty { display: none; }
-.overview-card-status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .modal-overlay {
   position: fixed;

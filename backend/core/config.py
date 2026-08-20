@@ -46,9 +46,6 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "delay_seconds": 0.0,
     },
-    "lobby_reveal": {
-        "provider": "porofessor",
-    },
     "ragequeue": {
         "enabled": False,
         "queue_id": 420,

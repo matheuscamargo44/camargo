@@ -21,17 +21,28 @@ const POSITION_OPTIONS = [
   { value: "FILL", label: "Fill" },
 ];
 
-const REVEAL_PROVIDER_OPTIONS = [
-  { value: "porofessor", label: "Porofessor" },
-  { value: "opgg", label: "OP.GG" },
-  { value: "ugg", label: "U.GG" },
-];
-
 const BADGE_MODE_OPTIONS = [
   { value: "empty", label: "Vazio" },
   { value: "copy", label: "Copiar melhor badge" },
   { value: "glitched", label: "Glitched (ID manual)" },
 ];
+
+// Every feature with a persistent on/off state gets a switch here — one
+// entry per switch, so a card can have zero, one (auto_accept) or several
+// (instalock_autoban). `action: null` means "use the generic
+// POST /features/{key}/toggle endpoint"; otherwise it calls that named
+// action via POST /features/{key}/actions/{action}. `invert` flips the
+// switch's on/off reading relative to the raw status field (used for
+// chat_toggle, where `disconnected: true` means the switch is OFF).
+export const FEATURE_TOGGLES = {
+  auto_accept: [{ field: "enabled", label: "Ligado", action: null }],
+  ragequeue: [{ field: "enabled", label: "Ligado", action: null }],
+  chat_toggle: [{ field: "disconnected", label: "Chat conectado", action: null, invert: true }],
+  instalock_autoban: [
+    { field: "instalock_enabled", label: "Instalock", action: "toggle_instalock" },
+    { field: "autoban_enabled", label: "AutoBan", action: "toggle_auto_ban" },
+  ],
+};
 
 // Declarative config: each feature key maps to a list of actions it exposes
 // through POST /features/{key}/actions/{action}. `confirmOnly` skips the
@@ -43,13 +54,11 @@ export const FEATURE_ACTIONS = {
       action: "set_instalock_champion",
       fields: [{ name: "champion_name", label: "Campeão (ou 'Random')", placeholder: "Random" }],
     },
-    { label: "Ligar/desligar Instalock", action: "toggle_instalock", fields: [], quiet: true },
     {
       label: "Definir AutoBan",
       action: "set_auto_ban_champion",
       fields: [{ name: "champion_name", label: "Campeão" }],
     },
-    { label: "Ligar/desligar AutoBan", action: "toggle_auto_ban", fields: [], quiet: true },
   ],
   ragequeue: [
     {
@@ -61,14 +70,6 @@ export const FEATURE_ACTIONS = {
         { name: "second_position", label: "2ª posição", type: "select", options: POSITION_OPTIONS },
       ],
     },
-  ],
-  lobby_reveal: [
-    {
-      label: "Definir provedor",
-      action: "set_provider",
-      fields: [{ name: "provider", label: "Provedor", type: "select", options: REVEAL_PROVIDER_OPTIONS }],
-    },
-    { label: "Abrir Lobby Reveal", action: "build_url", fields: [], opensUrl: true },
   ],
   profile_icon: [
     { label: "Escolher ícone de perfil", action: "change", kind: "icon-picker", iconKind: "profile" },

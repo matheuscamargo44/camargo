@@ -4,28 +4,33 @@ import { openConfirmModal } from "../modal.js";
 import { openIconPicker } from "../icon-picker.js";
 import { refreshNow } from "../state.js";
 import { formatValue, isBooleanField, STATUS_FIELD_LABELS, statusPill } from "../status-format.js";
-import { FEATURE_ACTIONS } from "./forms.js";
-
-const TOGGLEABLE_FEATURES = new Set(["auto_accept", "ragequeue", "chat_toggle"]);
+import { FEATURE_ACTIONS, FEATURE_TOGGLES } from "./forms.js";
 
 /**
- * Builds a full feature card: title/category header, live status rows, an
- * on/off switch when the feature supports it, and one control per entry in
- * FEATURE_ACTIONS (inline form, plain button, icon picker, or
- * confirm-then-call for destructive actions).
+ * Builds a full feature card: title/header, live status rows, one switch
+ * per entry in FEATURE_TOGGLES (0, 1, or several), and one control per
+ * entry in FEATURE_ACTIONS (inline form, plain button, icon picker, or
+ * confirm-then-call for destructive actions). Every feature that has a
+ * persistent on/off state gets the same switch treatment — see forms.js.
  */
 export function buildFeatureCard(meta, initialStatus) {
   const { cardEl, body } = card({ title: meta.title });
 
   const statusSection = el("div", { class: "card-status" });
+  const togglesSection = el("div", { class: "card-toggles" });
   const controlsSection = el("div", { class: "card-controls" });
   body.appendChild(statusSection);
+  body.appendChild(togglesSection);
   body.appendChild(controlsSection);
+
+  // Fields already shown as a switch below don't need to repeat as a status
+  // row too — that was making cards taller than they need to be.
+  const toggleFields = new Set((FEATURE_TOGGLES[meta.key] || []).map((t) => t.field));
 
   function renderStatus(status) {
     statusSection.innerHTML = "";
     for (const [field, value] of Object.entries(status || {})) {
-      if (field === "key") continue;
+      if (field === "key" || toggleFields.has(field)) continue;
       const label = STATUS_FIELD_LABELS[field] || field;
       const row = isBooleanField(field, value)
         ? statRowNode(label, statusPill(field, value))
@@ -36,21 +41,11 @@ export function buildFeatureCard(meta, initialStatus) {
 
   renderStatus(initialStatus);
 
-  if (TOGGLEABLE_FEATURES.has(meta.key)) {
-    const switchRow = el("div", { class: "card-switch-row" }, [
-      el("span", { text: "Ligado" }),
-    ]);
-    const button = toggleSwitch(Boolean(initialStatus?.enabled), async () => {
-      button.disabled = true;
-      try {
-        await toggleFeature(meta.key);
-        await refreshNow();
-      } finally {
-        button.disabled = false;
-      }
-    });
-    switchRow.appendChild(button);
-    controlsSection.appendChild(switchRow);
+  const toggleButtons = [];
+  for (const toggleDef of FEATURE_TOGGLES[meta.key] || []) {
+    const { row, button } = buildToggleRow(meta.key, toggleDef, initialStatus);
+    toggleButtons.push({ ...toggleDef, button });
+    togglesSection.appendChild(row);
   }
 
   for (const actionDef of FEATURE_ACTIONS[meta.key] || []) {
@@ -61,11 +56,12 @@ export function buildFeatureCard(meta, initialStatus) {
     cardEl,
     updateStatus: (status) => {
       renderStatus(status);
-      const button = controlsSection.querySelector(".switch");
-      if (button && status && "enabled" in status) {
-        button.classList.toggle("switch-on", Boolean(status.enabled));
-        button.classList.toggle("switch-off", !status.enabled);
-        button.setAttribute("aria-pressed", String(Boolean(status.enabled)));
+      for (const { field, invert, button } of toggleButtons) {
+        if (!status || !(field in status)) continue;
+        const checked = invert ? !status[field] : Boolean(status[field]);
+        button.classList.toggle("switch-on", checked);
+        button.classList.toggle("switch-off", !checked);
+        button.setAttribute("aria-pressed", String(checked));
       }
     },
   };
@@ -73,6 +69,25 @@ export function buildFeatureCard(meta, initialStatus) {
 
 function statRowNode(label, valueNode) {
   return el("div", { class: "stat-row" }, [el("span", { class: "stat-label", text: label }), valueNode]);
+}
+
+function buildToggleRow(key, toggleDef, initialStatus) {
+  const checked = toggleDef.invert ? !initialStatus?.[toggleDef.field] : Boolean(initialStatus?.[toggleDef.field]);
+  const button = toggleSwitch(checked, async () => {
+    button.disabled = true;
+    try {
+      if (toggleDef.action) {
+        await callAction(key, toggleDef.action, {});
+      } else {
+        await toggleFeature(key);
+      }
+      await refreshNow();
+    } finally {
+      button.disabled = false;
+    }
+  });
+  const row = el("div", { class: "card-switch-row" }, [el("span", { text: toggleDef.label }), button]);
+  return { row, button };
 }
 
 function buildActionControl(key, actionDef) {

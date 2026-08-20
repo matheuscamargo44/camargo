@@ -8,7 +8,6 @@ from features.customization import Background, Badges, ClientIcon, ProfileIcon, 
 from features.dodge import Dodge
 from features.instalock_autoban import InstalockAutoban
 from features.ragequeue import RageQueue
-from features.reveal import Reveal
 from features.social import ChatToggle, RemoveFriends, RestartUX
 
 FEATURE_CLASSES = [
@@ -16,7 +15,6 @@ FEATURE_CLASSES = [
     InstalockAutoban,
     Dodge,
     RageQueue,
-    Reveal,
     ProfileIcon,
     ClientIcon,
     Background,
