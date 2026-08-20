@@ -7,9 +7,13 @@ export function registerRoute(path, renderFn) {
   routes.set(path, renderFn);
 }
 
+function defaultPath() {
+  return routes.keys().next().value;
+}
+
 function currentPath() {
   const hash = window.location.hash.replace(/^#/, "");
-  return routes.has(hash) ? hash : "/dashboard";
+  return routes.has(hash) ? hash : defaultPath();
 }
 
 function updateActiveNav(path) {
@@ -39,6 +43,6 @@ export function startRouter(viewRootEl, navRootEl) {
   viewRoot = viewRootEl;
   navLinksRoot = navRootEl;
   window.addEventListener("hashchange", render);
-  if (!window.location.hash) window.location.hash = "#/dashboard";
+  if (!window.location.hash) window.location.hash = `#${defaultPath()}`;
   render();
 }

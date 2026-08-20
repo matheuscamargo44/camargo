@@ -3,7 +3,6 @@
 // subsection, and "Settings" inside the Social screen, so the nav stays
 // short instead of having a screen with a single card.
 export const NAV_ITEMS = [
-  { route: "/dashboard", label: "Painel" },
   { route: "/automation", label: "Automação" },
   { route: "/customization", label: "Customização" },
   { route: "/social", label: "Social & config" },

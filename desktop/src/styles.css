@@ -33,13 +33,20 @@ body {
   height: 100vh;
 }
 
+#topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
 #nav-links {
   display: flex;
   flex-direction: row;
   gap: 4px;
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--border);
-  flex: 0 0 auto;
 }
 
 .nav-link {
@@ -67,34 +74,34 @@ main#view-root {
 
 .empty-state { color: var(--text-muted); }
 
-/* League client status indicator */
-.league-status {
+/* League client status indicator — compact, lives in the top bar on every screen */
+.league-status-compact {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border-radius: var(--radius);
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
-  margin-bottom: 20px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .league-status-dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex: 0 0 auto;
   background: var(--text-muted);
 }
-.league-status.connected {
+.league-status-compact.connected {
   border-color: rgba(53, 196, 108, 0.35);
   background: var(--success-soft);
   color: var(--success);
 }
-.league-status.connected .league-status-dot { background: var(--success); box-shadow: 0 0 0 4px var(--success-soft); }
-.league-status.offline { color: var(--text-muted); }
-.league-status.offline .league-status-dot { background: var(--text-muted); }
+.league-status-compact.connected .league-status-dot { background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); }
 
 .card-grid, .overview-grid {
   display: grid;

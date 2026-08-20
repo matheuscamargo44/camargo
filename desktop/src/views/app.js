@@ -1,14 +1,15 @@
 import { el } from "../components.js";
+import { mountLeagueStatus } from "../league-status.js";
 import { registerRoute, startRouter } from "../router.js";
 import { startPolling } from "../state.js";
 import { renderAutomationView } from "./automation.js";
 import { NAV_ITEMS } from "./categories.js";
 import { renderCustomizationView } from "./customization.js";
-import { renderDashboardView } from "./dashboard.js";
 import { renderSocialView } from "./social.js";
 
 const navRoot = document.getElementById("nav-links");
 const viewRoot = document.getElementById("view-root");
+const leagueStatusSlot = document.getElementById("league-status-slot");
 
 function buildNav() {
   for (const item of NAV_ITEMS) {
@@ -23,7 +24,7 @@ async function bootstrap() {
   await startPolling();
 
   buildNav();
-  registerRoute("/dashboard", renderDashboardView);
+  mountLeagueStatus(leagueStatusSlot);
   registerRoute("/automation", renderAutomationView);
   registerRoute("/customization", renderCustomizationView);
   registerRoute("/social", renderSocialView);
