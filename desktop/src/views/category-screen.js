@@ -34,15 +34,15 @@ export function renderCategoryScreen(root, { categories }) {
     const metas = metaByCategory.get(category);
     if (!metas || metas.length === 0) continue;
 
-    const grid = el("div", { class: "card-grid" });
+    const list = el("div", { class: "feature-list" });
 
     for (const meta of metas) {
       const { cardEl, updateStatus } = buildFeatureCard(meta, {});
       updaters[meta.key] = updateStatus;
-      grid.appendChild(cardEl);
+      list.appendChild(cardEl);
     }
 
-    root.appendChild(grid);
+    root.appendChild(list);
   }
 
   return onFeaturesUpdate((features) => {

@@ -36,10 +36,55 @@ export function championSquareUrl(champNameOrId, version = cachedVersion) {
   return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${clean}.png`;
 }
 
+const SKINS_URL =
+  "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/skins.json";
+let cachedSkinsMap = null;
+let skinsPromise = null;
+
+export async function getSkinsMap() {
+  if (cachedSkinsMap) return cachedSkinsMap;
+  if (skinsPromise) return skinsPromise;
+
+  skinsPromise = fetch(SKINS_URL)
+    .then((r) => r.json())
+    .then((data) => {
+      cachedSkinsMap = {};
+      for (const [skinId, skinData] of Object.entries(data)) {
+        const rawPath =
+          skinData.tilePath ||
+          skinData.splashPath ||
+          skinData.loadScreenPath ||
+          skinData.uncenteredSplashPath;
+        let imgUrl = "";
+        if (rawPath) {
+          const cleanPath = rawPath.replace(/^\/lol-game-data\/assets\//i, "").toLowerCase();
+          imgUrl = `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/${cleanPath}`;
+        }
+        cachedSkinsMap[String(skinId)] = {
+          id: Number(skinId),
+          name: skinData.isBase ? "Default" : skinData.name || "Default",
+          imgUrl,
+        };
+      }
+      return cachedSkinsMap;
+    })
+    .catch(() => ({}));
+  return skinsPromise;
+}
+
+// Prefetch skins map immediately
+getSkinsMap();
+
+export function getSkinInfo(skinId) {
+  if (cachedSkinsMap && cachedSkinsMap[String(skinId)]) {
+    return cachedSkinsMap[String(skinId)];
+  }
+  return null;
+}
+
 export function skinTileUrl(skinId) {
-  if (!skinId && skinId !== 0) return "";
-  const champId = Math.floor(Number(skinId) / 1000);
-  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-tiles/${champId}/${skinId}.jpg`;
+  const info = getSkinInfo(skinId);
+  return info?.imgUrl || "";
 }
 
 export function rankedEmblemUrl(tier) {

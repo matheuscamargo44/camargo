@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage } = require("electron");
+const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 
@@ -11,9 +11,6 @@ let tray = null;
 let isQuitting = false;
 
 function startBackend() {
-  // windowsHide keeps Windows from popping a console window for the child
-  // process; the packaged exe is also built with --noconsole so it never
-  // allocates one in the first place (belt and suspenders).
   if (app.isPackaged) {
     const backendExe = path.join(process.resourcesPath, "backend", "camargo-backend.exe");
     backendProcess = spawn(backendExe, [], { stdio: "ignore", windowsHide: true });
@@ -32,6 +29,8 @@ function startBackend() {
 }
 
 function createWindow() {
+  const startHidden = process.argv.includes("--hidden") || app.getLoginItemSettings().wasOpenedAsHidden;
+
   mainWindow = new BrowserWindow({
     width: 680,
     height: 480,
@@ -48,11 +47,12 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, "src", "index.html"));
-  mainWindow.once("ready-to-show", () => mainWindow.show());
 
-  // Closing the window only hides it — the app keeps running in the
-  // background (and the backend keeps automations going) until the user
-  // quits from the tray menu.
+  if (!startHidden) {
+    mainWindow.once("ready-to-show", () => mainWindow.show());
+  }
+
+  // Closing the window only hides it to keep background automations running
   mainWindow.on("close", (event) => {
     if (isQuitting) return;
     event.preventDefault();
@@ -70,13 +70,28 @@ function showWindow() {
   mainWindow.focus();
 }
 
-function createTray() {
-  const icon = nativeImage.createFromPath(ICON_PATH).resize({ width: 16, height: 16 });
-  tray = new Tray(icon);
-  tray.setToolTip("camargo");
+function updateTrayMenu() {
+  if (!tray) return;
+  const isAutoLaunch = app.getLoginItemSettings().openAtLogin;
+
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open camargo", click: showWindow },
+      { type: "separator" },
+      {
+        label: "Start with Windows",
+        type: "checkbox",
+        checked: isAutoLaunch,
+        click: (item) => {
+          app.setLoginItemSettings({
+            openAtLogin: item.checked,
+            openAsHidden: true,
+            path: process.execPath,
+            args: ["--hidden"],
+          });
+          updateTrayMenu();
+        },
+      },
       { type: "separator" },
       {
         label: "Quit",
@@ -87,8 +102,31 @@ function createTray() {
       },
     ])
   );
+}
+
+function createTray() {
+  const icon = nativeImage.createFromPath(ICON_PATH).resize({ width: 16, height: 16 });
+  tray = new Tray(icon);
+  tray.setToolTip("camargo");
+  updateTrayMenu();
   tray.on("click", showWindow);
 }
+
+// IPC handlers for auto-launch
+ipcMain.handle("get-auto-launch", () => {
+  return app.getLoginItemSettings().openAtLogin;
+});
+
+ipcMain.handle("set-auto-launch", (_event, enabled) => {
+  app.setLoginItemSettings({
+    openAtLogin: Boolean(enabled),
+    openAsHidden: true,
+    path: process.execPath,
+    args: ["--hidden"],
+  });
+  updateTrayMenu();
+  return app.getLoginItemSettings().openAtLogin;
+});
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
@@ -105,9 +143,6 @@ if (!gotSingleInstanceLock) {
     app.on("activate", showWindow);
   });
 
-  // Background execution: closing the window hides it (see the "close"
-  // handler above) rather than destroying it, so this normally never fires.
-  // Not calling app.quit() here means Electron won't exit even if it does.
   app.on("window-all-closed", () => {});
 
   app.on("before-quit", () => {

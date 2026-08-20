@@ -46,6 +46,23 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "delay_seconds": 0.0,
     },
+    "auto_play_again": {
+        "enabled": False,
+    },
+    "aram_bench_swap": {
+        "enabled": False,
+        "champion": "None",
+    },
+    "auto_honor": {
+        "enabled": False,
+    },
+    "auto_party_invite": {
+        "enabled": False,
+        "summoners": "",
+    },
+    "random_skin": {
+        "enabled": False,
+    },
 }
 
 MIN_AUTOMATION_DELAY = 0.0

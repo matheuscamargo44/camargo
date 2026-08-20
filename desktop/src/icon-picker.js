@@ -15,6 +15,7 @@ async function loadIcons() {
 
   cachedIcons = Object.keys(data.data)
     .map(Number)
+    .filter((id) => !isNaN(id) && id > 0)
     .sort((a, b) => a - b)
     .map((id) => ({ id, url: profileIconUrl(id, version) }));
 
@@ -36,13 +37,17 @@ function setupInfiniteGrid(gridEl, onPick) {
       const button = el("button", {
         type: "button",
         class: "icon-picker-item",
-        title: String(icon.id),
+        title: `Icon #${icon.id}`,
       });
       const img = document.createElement("img");
       img.loading = "lazy";
       img.src = icon.url;
       img.alt = `Icon ${icon.id}`;
       button.appendChild(img);
+
+      const badge = el("span", { class: "icon-id-badge", text: String(icon.id) });
+      button.appendChild(badge);
+
       button.onclick = () => onPick(icon.id);
       gridEl.appendChild(button);
     }
@@ -109,7 +114,7 @@ export function openIconPicker({ kind = "profile" } = {}) {
     const search = el("input", {
       type: "text",
       class: "icon-picker-search",
-      placeholder: "Search by ID...",
+      placeholder: kind === "profile" ? "Search by ID (1-100)..." : "Search by ID...",
     });
     box.appendChild(search);
 
@@ -126,12 +131,13 @@ export function openIconPicker({ kind = "profile" } = {}) {
 
     loadIcons()
       .then((icons) => {
+        const availableIcons = kind === "profile" ? icons.filter((i) => i.id >= 1 && i.id <= 100) : icons;
         const scroller = setupInfiniteGrid(grid, finish);
-        scroller.reset(icons);
+        scroller.reset(availableIcons);
 
         const debouncedSearch = debounce(() => {
           const query = search.value.trim();
-          const filtered = query ? icons.filter((icon) => String(icon.id).includes(query)) : icons;
+          const filtered = query ? availableIcons.filter((icon) => String(icon.id).includes(query)) : availableIcons;
           scroller.reset(filtered);
         }, 150);
 

@@ -3,10 +3,17 @@ import { openOverlay, closeModal } from "./modal.js";
 
 const SKINS_URL =
   "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/skins.json";
-const skinTileUrl = (skinId) => {
-  const champId = Math.floor(Number(skinId) / 1000);
-  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-tiles/${champId}/${skinId}.jpg`;
-};
+
+function getSkinImgUrl(skinData) {
+  const rawPath =
+    skinData.tilePath ||
+    skinData.splashPath ||
+    skinData.loadScreenPath ||
+    skinData.uncenteredSplashPath;
+  if (!rawPath) return "";
+  const cleanPath = rawPath.replace(/^\/lol-game-data\/assets\//i, "").toLowerCase();
+  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/${cleanPath}`;
+}
 
 let cachedSkins = null;
 
@@ -35,7 +42,7 @@ async function loadSkins() {
       id: idNum,
       name,
       champion: championName || "",
-      imgUrl: skinTileUrl(idNum),
+      imgUrl: getSkinImgUrl(skinData),
     });
   }
 
