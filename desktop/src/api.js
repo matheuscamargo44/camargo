@@ -1,5 +1,11 @@
 const BASE_URL = window.camargo.backendUrl;
 
+export async function fetchHealth() {
+  const response = await fetch(`${BASE_URL}/health`);
+  if (!response.ok) throw new Error(`Backend unreachable (HTTP ${response.status})`);
+  return response.json();
+}
+
 export async function fetchFeatureMeta() {
   const response = await fetch(`${BASE_URL}/features/meta`);
   if (!response.ok) throw new Error(`Failed to load feature metadata (HTTP ${response.status})`);

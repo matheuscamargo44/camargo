@@ -71,10 +71,10 @@ export const FEATURE_ACTIONS = {
     { label: "Abrir Lobby Reveal", action: "build_url", fields: [], opensUrl: true },
   ],
   profile_icon: [
-    { label: "Trocar ícone de perfil", action: "change", fields: [{ name: "icon_id", label: "ID do ícone", type: "number" }] },
+    { label: "Escolher ícone de perfil", action: "change", kind: "icon-picker", iconKind: "profile" },
   ],
   client_icon: [
-    { label: "Trocar ícone do client", action: "change", fields: [{ name: "icon_id", label: "ID do ícone", type: "number" }] },
+    { label: "Escolher ícone do client", action: "change", kind: "icon-picker", iconKind: "client" },
   ],
   background: [
     {

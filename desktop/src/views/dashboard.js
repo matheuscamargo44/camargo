@@ -1,5 +1,6 @@
 import { el } from "../components.js";
-import { getFeatureMeta, onFeaturesUpdate } from "../state.js";
+import { getFeatureMeta, onFeaturesUpdate, onHealthUpdate } from "../state.js";
+import { formatValue, isBooleanField, statusPill } from "../status-format.js";
 
 const CATEGORY_ROUTE = {
   Automation: "#/automation",
@@ -9,39 +10,64 @@ const CATEGORY_ROUTE = {
   Settings: "#/social",
 };
 
-function summarize(status) {
+function renderStatusSummary(container, status) {
+  container.innerHTML = "";
   const { key, ...rest } = status || {};
-  return Object.entries(rest)
-    .slice(0, 2)
-    .map(([field, value]) => `${field}: ${value}`)
-    .join(" · ");
+  const entries = Object.entries(rest).slice(0, 2);
+  for (const [field, value] of entries) {
+    if (isBooleanField(field, value)) {
+      container.appendChild(statusPill(field, value));
+    } else {
+      container.appendChild(el("span", { class: "overview-card-status-text", text: formatValue(value) }));
+    }
+  }
 }
 
 function buildOverviewCard(meta) {
-  return el("a", { class: "overview-card", href: CATEGORY_ROUTE[meta.category] || "#/dashboard" }, [
-    el("h3", { text: meta.title }),
-    el("p", { class: "overview-card-status" }),
-  ]);
+  const status = el("div", { class: "overview-card-status" });
+  return {
+    cardEl: el("a", { class: "overview-card", href: CATEGORY_ROUTE[meta.category] || "#/dashboard" }, [
+      el("h3", { text: meta.title }),
+      status,
+    ]),
+    statusEl: status,
+  };
 }
 
 export function renderDashboardView(root) {
-  root.appendChild(el("h1", { class: "view-title", text: "Painel" }));
+  const leagueStatus = el("div", { class: "league-status" }, [
+    el("span", { class: "league-status-dot" }),
+    el("span", { class: "league-status-text", text: "Verificando cliente do League..." }),
+  ]);
+  root.appendChild(leagueStatus);
 
   const grid = el("div", { class: "overview-grid" });
   root.appendChild(grid);
 
   const cardsByKey = {};
   for (const item of getFeatureMeta()) {
-    const cardEl = buildOverviewCard(item);
-    cardsByKey[item.key] = cardEl;
+    const { cardEl, statusEl } = buildOverviewCard(item);
+    cardsByKey[item.key] = statusEl;
     grid.appendChild(cardEl);
   }
 
-  return onFeaturesUpdate((features) => {
+  const unsubscribeFeatures = onFeaturesUpdate((features) => {
     for (const [key, status] of Object.entries(features)) {
-      const cardEl = cardsByKey[key];
-      if (!cardEl) continue;
-      cardEl.querySelector(".overview-card-status").textContent = summarize(status);
+      const statusEl = cardsByKey[key];
+      if (statusEl) renderStatusSummary(statusEl, status);
     }
   });
+
+  const unsubscribeHealth = onHealthUpdate((health) => {
+    const connected = Boolean(health.league_connected);
+    leagueStatus.className = `league-status ${connected ? "connected" : "offline"}`;
+    leagueStatus.querySelector(".league-status-text").textContent = connected
+      ? "Cliente do League conectado"
+      : "Cliente do League não encontrado — abra o LoL para usar as automações";
+  });
+
+  return () => {
+    unsubscribeFeatures();
+    unsubscribeHealth();
+  };
 }

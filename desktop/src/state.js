@@ -1,8 +1,10 @@
-import { fetchFeatureMeta, fetchFeatures } from "./api.js";
+import { fetchFeatureMeta, fetchFeatures, fetchHealth } from "./api.js";
 
 const featureSubscribers = new Set();
+const healthSubscribers = new Set();
 
 let latestFeatures = {};
+let latestHealth = { status: "unknown", league_connected: false };
 let featureMeta = [];
 
 export function getFeatureMeta() {
@@ -15,21 +17,28 @@ export function onFeaturesUpdate(callback) {
   return () => featureSubscribers.delete(callback);
 }
 
+export function onHealthUpdate(callback) {
+  healthSubscribers.add(callback);
+  callback(latestHealth);
+  return () => healthSubscribers.delete(callback);
+}
+
 async function pollOnce() {
   try {
     // Metadata (title/category per feature) is static once loaded, so only
     // fetch it until it succeeds — everything else is polled every cycle.
-    const requests = [fetchFeatures()];
+    const requests = [fetchFeatures(), fetchHealth()];
     if (featureMeta.length === 0) requests.push(fetchFeatureMeta());
 
-    const [features, meta] = await Promise.all(requests);
+    const [features, health, meta] = await Promise.all(requests);
     latestFeatures = features;
+    latestHealth = health;
     if (meta) featureMeta = meta;
   } catch (error) {
-    // Backend may be briefly unreachable (still starting up, or restarting);
-    // the next poll cycle retries automatically.
+    latestHealth = { status: "offline", league_connected: false };
   }
   for (const cb of featureSubscribers) cb(latestFeatures);
+  for (const cb of healthSubscribers) cb(latestHealth);
 }
 
 function wait(ms) {

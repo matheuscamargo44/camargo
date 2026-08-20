@@ -1,36 +1,18 @@
 import { callAction, toggleFeature } from "../api.js";
 import { actionButton, card, el, inlineForm, statRow, toggleSwitch } from "../components.js";
 import { openConfirmModal } from "../modal.js";
+import { openIconPicker } from "../icon-picker.js";
 import { refreshNow } from "../state.js";
+import { formatValue, isBooleanField, STATUS_FIELD_LABELS, statusPill } from "../status-format.js";
 import { FEATURE_ACTIONS } from "./forms.js";
 
 const TOGGLEABLE_FEATURES = new Set(["auto_accept", "ragequeue", "chat_toggle"]);
 
-const STATUS_FIELD_LABELS = {
-  enabled: "Ativo",
-  instalock_enabled: "Instalock",
-  instalock_champion: "Campeão (instalock)",
-  autoban_enabled: "AutoBan",
-  autoban_champion: "Campeão (autoban)",
-  queue_id: "Fila (ID)",
-  queue_name: "Fila",
-  first_position: "1ª posição",
-  second_position: "2ª posição",
-  provider: "Provedor",
-  disconnected: "Chat desconectado",
-};
-
-function formatValue(value) {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean") return value ? "Sim" : "Não";
-  return String(value);
-}
-
 /**
  * Builds a full feature card: title/category header, live status rows, an
  * on/off switch when the feature supports it, and one control per entry in
- * FEATURE_ACTIONS (inline form, plain button, or confirm-then-call for
- * destructive actions).
+ * FEATURE_ACTIONS (inline form, plain button, icon picker, or
+ * confirm-then-call for destructive actions).
  */
 export function buildFeatureCard(meta, initialStatus) {
   const { cardEl, body } = card({ title: meta.title });
@@ -44,7 +26,11 @@ export function buildFeatureCard(meta, initialStatus) {
     statusSection.innerHTML = "";
     for (const [field, value] of Object.entries(status || {})) {
       if (field === "key") continue;
-      statusSection.appendChild(statRow(STATUS_FIELD_LABELS[field] || field, formatValue(value)));
+      const label = STATUS_FIELD_LABELS[field] || field;
+      const row = isBooleanField(field, value)
+        ? statRowNode(label, statusPill(field, value))
+        : statRow(label, formatValue(value));
+      statusSection.appendChild(row);
     }
   }
 
@@ -85,7 +71,28 @@ export function buildFeatureCard(meta, initialStatus) {
   };
 }
 
+function statRowNode(label, valueNode) {
+  return el("div", { class: "stat-row" }, [el("span", { class: "stat-label", text: label }), valueNode]);
+}
+
 function buildActionControl(key, actionDef) {
+  if (actionDef.kind === "icon-picker") {
+    return actionButton(
+      actionDef.label,
+      async () => {
+        const iconId = await openIconPicker({ kind: actionDef.iconKind });
+        if (iconId === null) return;
+        try {
+          await callAction(key, actionDef.action, { icon_id: iconId });
+          await refreshNow();
+        } catch (error) {
+          alert(error.message);
+        }
+      },
+      "primary"
+    );
+  }
+
   if (actionDef.confirmOnly) {
     return actionButton(
       actionDef.label,

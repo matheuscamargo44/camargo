@@ -9,9 +9,7 @@ import { buildFeatureCard } from "./feature-card.js";
  * onFeaturesUpdate without rebuilding the DOM (so open forms keep their
  * typed values).
  */
-export function renderCategoryScreen(root, { title, categories }) {
-  root.appendChild(el("h1", { class: "view-title", text: title }));
-
+export function renderCategoryScreen(root, { categories }) {
   const metaByCategory = new Map();
   for (const meta of getFeatureMeta()) {
     if (!categories.includes(meta.category)) continue;
