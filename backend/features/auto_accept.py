@@ -1,5 +1,9 @@
+import logging
 from core.config import get_automation_delay, save_config
 from features.base import ThreadedFeature
+
+
+logger = logging.getLogger(__name__)
 
 
 class AutoAccept(ThreadedFeature):
@@ -45,6 +49,6 @@ class AutoAccept(ThreadedFeature):
                             self._sleep(delay)
                         self.accept_match()
                 except Exception:
-                    pass
+                    logger.exception("AutoAccept._loop failed")
 
             self._sleep(0.5)

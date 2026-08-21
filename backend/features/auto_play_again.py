@@ -37,8 +37,8 @@ class AutoPlayAgain(ThreadedFeature):
             if search_res.status_code in (200, 201, 204):
                 self.on_event("success", "Play Again: Matchmaking started")
                 return True
-        except Exception as e:
-            logger.debug(f"Search error: {e}")
+        except Exception:
+            logger.exception("AutoPlayAgain.start_search failed")
         return False
 
     def toggle(self, state: bool = None) -> bool:
@@ -55,7 +55,7 @@ class AutoPlayAgain(ThreadedFeature):
                 if phase_res.status_code == 200 and phase_res.json() == "Lobby":
                     self.start_search()
             except Exception:
-                pass
+                logger.exception("AutoPlayAgain.toggle failed")
 
         return new_state
 
@@ -91,7 +91,7 @@ class AutoPlayAgain(ThreadedFeature):
                     elif phase in ("Matchmaking", "ReadyCheck", "ChampSelect", "InProgress"):
                         self.last_handled_phase = phase
                         self.pending_play_again_search = False
-            except Exception as e:
-                logger.debug(f"PlayAgain loop error: {e}")
+            except Exception:
+                logger.exception("AutoPlayAgain._loop failed")
 
             self._sleep(2)

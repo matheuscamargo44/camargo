@@ -82,7 +82,7 @@ class RandomSkinPicker(ThreadedFeature):
                                         self._sleep(2.0)
                 else:
                     self.last_randomized_session = None
-            except Exception as e:
-                logger.debug(f"RandomSkinPicker error: {e}")
+            except Exception:
+                logger.exception("RandomSkinPicker._loop failed")
 
             self._sleep(1.0)

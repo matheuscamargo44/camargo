@@ -19,8 +19,8 @@ class ChallengeTitles(Feature):
                     data = res.json()
                     title_obj = data.get("title", {})
                     current_title = title_obj.get("name", "None") or "None"
-            except Exception as e:
-                logger.debug(f"Could not fetch challenge titles: {e}")
+            except Exception:
+                logger.exception("ChallengeTitles.get_status failed")
 
         return {
             "key": self.key,
@@ -46,7 +46,7 @@ class ChallengeTitles(Feature):
                         if t_id and t_name:
                             unlocked.append({"id": t_id, "name": t_name, "desc": t_desc})
         except Exception:
-            pass
+            logger.exception("ChallengeTitles.get_titles failed")
 
         # 2. If empty, try /lol-challenges/v1/summary-player-data/local-player
         if not unlocked:
@@ -62,7 +62,7 @@ class ChallengeTitles(Feature):
                         if t_id and t_name:
                             unlocked.append({"id": t_id, "name": t_name, "desc": t_desc})
             except Exception:
-                pass
+                logger.exception("ChallengeTitles.get_titles failed")
 
         # 3. If still empty, try /lol-challenges/v1/titles
         if not unlocked:
@@ -79,7 +79,7 @@ class ChallengeTitles(Feature):
                                 if t_id and t_name:
                                     unlocked.append({"id": t_id, "name": t_name, "desc": t_desc})
             except Exception:
-                pass
+                logger.exception("ChallengeTitles.get_titles failed")
 
         # Deduplicate and sort alphabetically
         seen = set()

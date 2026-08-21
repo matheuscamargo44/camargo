@@ -16,7 +16,7 @@ class FriendRequestsManager(Feature):
             if res_v2.status_code == 200:
                 return res_v2.json() or []
         except Exception:
-            pass
+            logger.exception("FriendRequestsManager._fetch_requests failed")
 
         # Fallback to V1
         try:
@@ -24,7 +24,7 @@ class FriendRequestsManager(Feature):
             if res_v1.status_code == 200:
                 return res_v1.json() or []
         except Exception:
-            pass
+            logger.exception("FriendRequestsManager._fetch_requests failed")
 
         return []
 
@@ -35,8 +35,8 @@ class FriendRequestsManager(Feature):
                 reqs = self._fetch_requests()
                 incoming = [r for r in reqs if r.get("direction") in ("in", "BOTH", "INCOMING")]
                 pending_count = len(incoming) if incoming else len(reqs)
-            except Exception as e:
-                logger.debug(f"Could not fetch friend requests: {e}")
+            except Exception:
+                logger.exception("FriendRequestsManager.get_status failed")
 
         return {
             "key": self.key,
@@ -64,7 +64,7 @@ class FriendRequestsManager(Feature):
                         accepted += 1
                         handled = True
                 except Exception:
-                    pass
+                    logger.exception("FriendRequestsManager.accept_all failed")
 
             if not handled and req_id:
                 try:
@@ -74,7 +74,7 @@ class FriendRequestsManager(Feature):
                     if accept_res.status_code in (200, 201, 204):
                         accepted += 1
                 except Exception:
-                    pass
+                    logger.exception("FriendRequestsManager.accept_all failed")
 
         self.on_event("success", f"Accepted {accepted} friend request(s)")
         return {"accepted": accepted}
@@ -98,7 +98,7 @@ class FriendRequestsManager(Feature):
                         rejected += 1
                         handled = True
                 except Exception:
-                    pass
+                    logger.exception("FriendRequestsManager.reject_all failed")
 
             if not handled and req_id:
                 try:
@@ -106,7 +106,7 @@ class FriendRequestsManager(Feature):
                     if del_res.status_code in (200, 201, 204):
                         rejected += 1
                 except Exception:
-                    pass
+                    logger.exception("FriendRequestsManager.reject_all failed")
 
         self.on_event("success", f"Rejected {rejected} friend request(s)")
         return {"rejected": rejected}

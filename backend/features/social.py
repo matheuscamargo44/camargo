@@ -1,4 +1,9 @@
+import logging
+import time
+
 from features.base import Feature
+
+logger = logging.getLogger(__name__)
 
 
 class RemoveFriends(Feature):
@@ -58,11 +63,36 @@ class ChatToggle(Feature):
     title = "Chat"
     category = "Social"
 
+    #: How long a read of the real chat state is reused. The UI polls every
+    #: 4s and this costs a round trip to the Riot client, so it is throttled.
+    STATE_TTL_SECONDS = 5.0
+
     def __init__(self, lcu_client, config, on_event=None):
         super().__init__(lcu_client, config, on_event)
         self.disconnected = False
+        self._state_read_at = 0.0
+
+    def _refresh_if_stale(self):
+        """Read the real state from the client.
+
+        Without this the switch reported whatever the last toggle set, so
+        opening the app with chat already disconnected showed "connected"
+        until the user clicked once.
+        """
+        if time.monotonic() - self._state_read_at < self.STATE_TTL_SECONDS:
+            return
+        if not self.lcu.is_league_connected():
+            return  # the client being closed is a normal state, not a failure
+        try:
+            response = self.lcu.riot_request("GET", "/chat/v1/session")
+            if response.status_code == 200:
+                self.disconnected = response.json().get("state") == "disconnected"
+                self._state_read_at = time.monotonic()
+        except Exception:
+            logger.exception("ChatToggle._refresh_if_stale failed")
 
     def get_status(self) -> dict:
+        self._refresh_if_stale()
         return {"key": self.key, "disconnected": self.disconnected}
 
     def toggle(self):
@@ -77,5 +107,6 @@ class ChatToggle(Feature):
             raise RuntimeError(f"Could not {action} chat (HTTP {response.status_code})")
 
         self.disconnected = not self.disconnected
+        self._state_read_at = time.monotonic()
         self.on_event("info", f"Chat {'disconnected' if self.disconnected else 'reconnected'}")
         return self.disconnected

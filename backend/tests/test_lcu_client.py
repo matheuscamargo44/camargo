@@ -1,3 +1,4 @@
+import logging
 import requests
 
 import core.lcu_client
@@ -87,15 +88,51 @@ def test_failed_request_rescans_immediately(monkeypatch):
     # pick up new credentials instead of waiting out the TTL.
     attempts = []
 
+    class FakeResponse:
+        status_code = 200
+        text = "{}"
+
     def fake_request(method, url, **kwargs):
         attempts.append(url)
         if len(attempts) == 1:
             raise requests.exceptions.ConnectionError("client restarted")
-        return "ok"
+        return FakeResponse()
 
     monkeypatch.setattr(core.lcu_client.requests, "request", fake_request)
     scan.port = "9999"
 
-    assert client.lcu_request("GET", "/x") == "ok"
+    assert client.lcu_request("GET", "/x").status_code == 200
     assert scan.calls > calls_before, "a transport failure must force a rescan"
     assert attempts[-1] == "https://127.0.0.1:9999/x"
+
+
+def _capture(monkeypatch, status, text="{}"):
+    class Response:
+        status_code = status
+
+        def __init__(self):
+            self.text = text
+
+    monkeypatch.setattr(core.lcu_client.requests, "request", lambda *a, **k: Response())
+
+
+def test_a_404_is_not_reported_as_a_problem(monkeypatch, caplog):
+    """The LCU answers 404 for 'no champ select right now' on every poll."""
+    client = make_client(monkeypatch, ScanCounter())
+    _capture(monkeypatch, 404)
+
+    with caplog.at_level(logging.DEBUG, logger="core.lcu_client"):
+        client.lcu_request("GET", "/lol-champ-select/v1/session")
+
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_other_error_responses_are_reported(monkeypatch, caplog):
+    client = make_client(monkeypatch, ScanCounter())
+    _capture(monkeypatch, 500, text="internal error")
+
+    with caplog.at_level(logging.DEBUG, logger="core.lcu_client"):
+        client.lcu_request("POST", "/lol-lobby/v2/lobby")
+
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warnings and "500" in warnings[0].getMessage()

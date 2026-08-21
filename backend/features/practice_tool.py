@@ -24,7 +24,7 @@ class PracticeTool5v5(Feature):
             self.lcu.lcu_request("DELETE", "/lol-lobby/v2/lobby")
             time.sleep(0.5)
         except Exception:
-            pass
+            logger.exception("PracticeTool5v5.create_lobby failed")
 
         lobby_payload = {
             "customGameLobby": {

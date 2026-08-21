@@ -26,8 +26,8 @@ class PresenceStatus(Feature):
                 if res.status_code == 200:
                     data = res.json()
                     availability = data.get("availability", "chat")
-            except Exception as e:
-                logger.debug(f"Could not fetch presence: {e}")
+            except Exception:
+                logger.exception("PresenceStatus.get_status failed")
 
         return {
             "key": self.key,

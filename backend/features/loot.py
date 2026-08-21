@@ -38,8 +38,8 @@ class MassDisenchant(Feature):
                             key_fragments += count
                         elif item_type == "CHEST" or loot_id.startswith("CHEST_"):
                             chests_count += count
-            except Exception as e:
-                logger.debug(f"Failed to fetch player loot: {e}")
+            except Exception:
+                logger.exception("MassDisenchant.get_status failed")
 
         return {
             "key": self.key,

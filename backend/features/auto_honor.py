@@ -53,8 +53,8 @@ class AutoHonor(ThreadedFeature):
                 if puuids or summoner_ids:
                     self.party_member_puuids = puuids
                     self.party_member_summoner_ids = summoner_ids
-        except Exception as e:
-            logger.debug(f"AutoHonor party update error: {e}")
+        except Exception:
+            logger.exception("AutoHonor._update_party_members failed")
 
     def _loop(self):
         while not self._stop_event.is_set():
@@ -126,7 +126,7 @@ class AutoHonor(ThreadedFeature):
                             role_str = "duo partner" if is_duo else "teammate"
                             self.on_event("success", f"Auto Honor: Voted for {role_str} ({target_name})")
                             self._sleep(2)
-            except Exception as e:
-                logger.debug(f"AutoHonor error: {e}")
+            except Exception:
+                logger.exception("AutoHonor._loop failed")
 
             self._sleep(2)

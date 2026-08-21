@@ -32,8 +32,8 @@ class RankedPresence(Feature):
                     data = res.json()
                     lol = data.get("lol", {})
                     current_tier = lol.get("rankedLeagueTier", "Default")
-            except Exception as e:
-                logger.debug(f"Could not fetch ranked presence: {e}")
+            except Exception:
+                logger.exception("RankedPresence.get_status failed")
 
         return {
             "key": self.key,

@@ -45,8 +45,8 @@ class AramBenchSwap(ThreadedFeature):
                     champ_name = champ.get("name")
                     if champ_id and champ_id > 0 and champ_name:
                         self.champ_dict[champ_name.lower()] = champ_id
-        except Exception as e:
-            logger.debug(f"Could not update champion list: {e}")
+        except Exception:
+            logger.exception("AramBenchSwap.update_champion_list failed")
 
     def champ_name_to_id(self, champ_name):
         if not self.champ_dict:
@@ -103,7 +103,7 @@ class AramBenchSwap(ThreadedFeature):
                                 self.on_event("success", f"ARAM Bench Sniper: Swapped to {self.target_champion}!")
                                 self._sleep(2.0)
                             break
-            except Exception as e:
-                logger.debug(f"AramBenchSwap error: {e}")
+            except Exception:
+                logger.exception("AramBenchSwap._loop failed")
 
             self._sleep(0.5)

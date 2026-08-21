@@ -2,9 +2,13 @@
 badges, Riot ID and status message. Grouped in one module since each is a
 single LCU call with no monitoring loop, unlike the automation features.
 """
+import logging
 from features.base import Feature
 
 BADGE_MODES = {"empty", "copy", "glitched"}
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProfileIcon(Feature):
@@ -20,7 +24,7 @@ class ProfileIcon(Feature):
                 if res.status_code == 200:
                     icon_id = res.json().get("profileIconId")
             except Exception:
-                pass
+                logger.exception("ProfileIcon.get_status failed")
         return {"key": self.key, "icon_id": icon_id}
 
     def get_owned_icons(self) -> list:
@@ -36,7 +40,7 @@ class ProfileIcon(Feature):
                     if item_id is not None:
                         owned.add(int(item_id))
         except Exception:
-            pass
+            logger.exception("ProfileIcon.get_owned_icons failed")
         return sorted(owned)
 
     def change(self, icon_id):
@@ -66,7 +70,7 @@ class ClientIcon(Feature):
                 if res.status_code == 200:
                     icon_id = res.json().get("icon")
             except Exception:
-                pass
+                logger.exception("ClientIcon.get_status failed")
         return {"key": self.key, "icon_id": icon_id}
 
     def change(self, icon_id):
@@ -94,7 +98,7 @@ class Background(Feature):
                 if res.status_code == 200:
                     skin_id = res.json().get("backgroundSkinId")
             except Exception:
-                pass
+                logger.exception("Background.get_status failed")
         return {"key": self.key, "skin_id": skin_id}
 
     def change(self, skin_id):

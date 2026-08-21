@@ -5,6 +5,7 @@ LeagueClientUx.exe process. No feature/business logic lives here.
 """
 import base64
 import json
+import logging
 import threading
 import time
 
@@ -50,7 +51,7 @@ def find_league_client_credentials():
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
     except Exception:
-        pass
+        logger.exception("find_league_client_credentials failed")
 
     return None, None
 
@@ -75,7 +76,7 @@ def find_riot_client_credentials():
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
     except Exception:
-        pass
+        logger.exception("find_riot_client_credentials failed")
 
     return None, None
 
@@ -89,6 +90,9 @@ def _headers(token):
         return {}
     auth = base64.b64encode(f"riot:{token}".encode("utf-8")).decode("utf-8")
     return {"Authorization": f"Basic {auth}", "Content-Type": "application/json"}
+
+
+logger = logging.getLogger(__name__)
 
 
 class LCUClient:
@@ -166,7 +170,7 @@ class LCUClient:
                     raise RuntimeError(f"Could not find {service} client credentials")
 
             try:
-                return requests.request(
+                response = requests.request(
                     method,
                     f"{base_url}{endpoint}",
                     headers=headers,
@@ -174,11 +178,31 @@ class LCUClient:
                     verify=False,
                     timeout=REQUEST_TIMEOUT_SECONDS,
                 )
-            except requests.exceptions.RequestException:
+            except requests.exceptions.RequestException as exc:
                 if attempt == REQUEST_RETRIES:
+                    logger.error(
+                        "%s %s %s failed after %d attempts: %s",
+                        service, method, endpoint, attempt + 1, exc,
+                    )
                     raise
+                logger.debug(
+                    "%s %s %s failed (attempt %d), rescanning credentials: %s",
+                    service, method, endpoint, attempt + 1, exc,
+                )
                 refresh_credentials()
                 base_url, headers = self._service_connection(service)
+            else:
+                # A 404 is how the LCU says "not in that state right now"
+                # (no champ select, no ballot, no lobby): routine, not a fault.
+                if response.status_code >= 400 and response.status_code != 404:
+                    logger.warning(
+                        "%s %s %s -> HTTP %d: %s",
+                        service, method, endpoint, response.status_code,
+                        response.text[:300].replace(chr(10), " "),
+                    )
+                else:
+                    logger.debug("%s %s %s -> HTTP %d", service, method, endpoint, response.status_code)
+                return response
 
     def lcu_request(self, method, endpoint, body=""):
         return self._request(

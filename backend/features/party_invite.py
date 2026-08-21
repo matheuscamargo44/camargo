@@ -63,7 +63,7 @@ class AutoPartyInvite(ThreadedFeature):
                     if name:
                         lookup[name.lower()] = (s_id, puuid)
         except Exception:
-            pass
+            logger.exception("AutoPartyInvite._get_friends_lookup failed")
         return lookup
 
     def invite_now(self):
@@ -108,7 +108,7 @@ class AutoPartyInvite(ThreadedFeature):
                         invitations.append({"toPuuid": puuid})
                         resolved = True
             except Exception:
-                pass
+                logger.exception("AutoPartyInvite.invite_now failed")
 
             if not resolved:
                 invitations.append({"toSummonerName": name})
@@ -143,7 +143,7 @@ class AutoPartyInvite(ThreadedFeature):
                         self.invite_now()
                 else:
                     self.last_invited_lobby_id = None
-            except Exception as e:
-                logger.debug(f"AutoPartyInvite loop error: {e}")
+            except Exception:
+                logger.exception("AutoPartyInvite._loop failed")
 
             self._sleep(2)
