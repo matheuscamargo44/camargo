@@ -132,9 +132,19 @@ export function buildFeatureCard(meta, initialStatus) {
 
   renderStatus(initialStatus);
 
+  function applyLeagueState(connected) {
+    rowEl.classList.toggle("league-disconnected", !connected);
+  }
+
+  applyLeagueState(isLeagueConnected());
+  onHealthUpdate((health) => {
+    applyLeagueState(Boolean(health?.league_connected));
+  });
+
   return {
+    cardEl: rowEl,
     element: rowEl,
-    update(status) {
+    updateStatus(status) {
       renderStatus(status);
       if (!status) return;
 
@@ -147,6 +157,9 @@ export function buildFeatureCard(meta, initialStatus) {
           btn.classList.toggle("active", val);
         }
       });
+    },
+    update(status) {
+      this.updateStatus(status);
     },
   };
 }
