@@ -2,15 +2,9 @@
 badges, Riot ID and status message. Grouped in one module since each is a
 single LCU call with no monitoring loop, unlike the automation features.
 """
-import requests
-
 from features.base import Feature
 
 BADGE_MODES = {"empty", "copy", "glitched"}
-SKINS_URL = (
-    "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/"
-    "global/default/v1/skins.json"
-)
 
 
 class ProfileIcon(Feature):
@@ -86,46 +80,6 @@ class Background(Feature):
             except Exception:
                 pass
         return {"key": self.key, "skin_id": skin_id}
-
-    @staticmethod
-    def fetch_all_champion_skins():
-        response = requests.get(SKINS_URL, timeout=10)
-        if response.status_code != 200:
-            raise RuntimeError(f"Could not fetch skins (HTTP {response.status_code})")
-
-        skins = []
-        for skin_id, skin_data in response.json().items():
-            load_screen_path = skin_data.get("loadScreenPath", "")
-            marker = "ASSETS/Characters/"
-            marker_start = load_screen_path.find(marker)
-            if marker_start == -1:
-                champion_name = "Unknown"
-            else:
-                name_start = marker_start + len(marker)
-                name_end = load_screen_path.find("/", name_start)
-                champion_name = load_screen_path[name_start:name_end]
-
-            if skin_data.get("questSkinInfo"):
-                for tier in skin_data["questSkinInfo"].get("tiers", []):
-                    skins.append(
-                        {"id": str(tier.get("id", "")), "name": tier.get("name", ""), "champion": champion_name}
-                    )
-            else:
-                skins.append(
-                    {
-                        "id": str(skin_id),
-                        "name": "Default" if skin_data.get("isBase") else skin_data.get("name", ""),
-                        "champion": champion_name,
-                    }
-                )
-        return skins
-
-    @staticmethod
-    def search_skins_by_name(skins, search_query):
-        query = search_query.strip().lower()
-        if not query:
-            return []
-        return [s for s in skins if query in s["champion"].lower() or query in s["name"].lower()]
 
     def change(self, skin_id):
         skin_id = int(skin_id)

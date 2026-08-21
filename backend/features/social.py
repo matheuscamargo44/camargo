@@ -65,13 +65,6 @@ class ChatToggle(Feature):
     def get_status(self) -> dict:
         return {"key": self.key, "disconnected": self.disconnected}
 
-    def refresh_state(self):
-        response = self.lcu.riot_request("GET", "/chat/v1/session")
-        if response.status_code != 200:
-            raise RuntimeError(f"Could not read chat state (HTTP {response.status_code})")
-        self.disconnected = response.json().get("state") == "disconnected"
-        return self.disconnected
-
     def toggle(self):
         if self.disconnected:
             response = self.lcu.riot_request("POST", "/chat/v1/resume")

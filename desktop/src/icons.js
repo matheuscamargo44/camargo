@@ -68,18 +68,6 @@ const FEATURE_ICON_MAP = {
 };
 
 /** Map nav routes to icon names */
-const NAV_ICON_MAP = {
-  "/automation": "zap",
-  "/customization": "palette",
-  "/social": "users",
-  "/logs": "scroll",
-};
-
-/**
- * Returns an SVG element for the given icon name.
- * @param {string} name - Icon name (e.g. "zap", "check-circle")
- * @returns {HTMLElement}
- */
 export function icon(name) {
   const wrapper = document.createElement("span");
   wrapper.innerHTML = SVG_ICONS[name] || "";
@@ -102,7 +90,3 @@ export function featureIcon(featureKey) {
  * @param {string} route
  * @returns {HTMLElement}
  */
-export function navIcon(route) {
-  const name = NAV_ICON_MAP[route] || "monitor";
-  return icon(name);
-}

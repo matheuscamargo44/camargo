@@ -172,6 +172,9 @@ class MassDisenchant(Feature):
         loot_list = res.json()
         disenchanted_count = 0
 
+        # Deliberately excludes SKIN/SKIN_RENTAL: skin shards are the one kind
+        # of loot users do not want destroyed by a bulk action. The confirmation
+        # dialog in the UI lists exactly these categories.
         type_to_recipe = {
             "CHAMPION_RENTAL": "CHAMPION_RENTAL_disenchant",
             "CHAMPION": "CHAMPION_disenchant",
