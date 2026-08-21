@@ -17,6 +17,11 @@ app = FastAPI(title="Camargo backend")
 #: reading responses even if it somehow learned the token.
 ALLOWED_ORIGINS = ["null"]
 
+#: Chromium serializes the same file:// origin differently on a WebSocket
+#: handshake than on a fetch: "file://" instead of "null". Both are opaque
+#: origins no ordinary web page can present.
+ALLOWED_WS_ORIGINS = {"null", "file://"}
+
 
 @app.middleware("http")
 async def require_auth_token(request: Request, call_next):
@@ -184,7 +189,7 @@ async def events(ws: WebSocket):
     # WebSockets are not covered by CORS: without these checks any web page
     # could subscribe to the event stream.
     origin = ws.headers.get("origin")
-    if origin is not None and origin not in ALLOWED_ORIGINS:
+    if origin is not None and origin not in ALLOWED_WS_ORIGINS:
         await ws.close(code=1008)
         return
 
