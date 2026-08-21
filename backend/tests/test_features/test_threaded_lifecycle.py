@@ -89,3 +89,48 @@ def test_start_is_idempotent(monkeypatch):
         assert len(names) == len(set(names)) == len(loop_feature_keys())
     finally:
         registry.stop_all()
+
+
+def test_chat_toggle_reads_the_real_state(monkeypatch):
+    """The switch used to report the last toggle, not the client's state."""
+    import copy
+
+    from core.config import DEFAULT_CONFIG
+    from features.social import ChatToggle
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"state": "disconnected"}
+
+    class Client(StubLCUClient):
+        def is_league_connected(self):
+            return True
+
+        def riot_request(self, method, endpoint, body=""):
+            return Response()
+
+    feature = ChatToggle(Client(), copy.deepcopy(DEFAULT_CONFIG))
+
+    # Fresh instance: nothing has been toggled yet.
+    assert feature.disconnected is False
+    assert feature.get_status()["disconnected"] is True
+
+
+def test_chat_toggle_stays_quiet_while_the_client_is_closed(caplog):
+    """A closed client is a normal state; it must not fill the log."""
+    import copy
+    import logging
+
+    from core.config import DEFAULT_CONFIG
+    from features.social import ChatToggle
+
+    feature = ChatToggle(StubLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+
+    with caplog.at_level(logging.DEBUG, logger="features.social"):
+        for _ in range(5):
+            feature._state_read_at = 0.0
+            feature.get_status()
+
+    assert caplog.records == []
