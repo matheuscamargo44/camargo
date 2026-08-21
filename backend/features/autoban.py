@@ -69,6 +69,28 @@ class AutoBan(ThreadedFeature):
         self.on_event("info", f"AutoBan {'enabled' if self.enabled else 'disabled'}")
         return self.enabled
 
+    def find_pending_action(self, session, cell_id):
+        """The champ select action this feature should act on, if any.
+
+        Champ select nests actions in phases; only the local player's own
+        unfinished "ban" counts. Extracted from the loop so the
+        matching can be tested without a live client.
+        """
+        if not self.enabled or cell_id is None:
+            return None
+
+        for phase in session.get("actions", []):
+            if not isinstance(phase, list):
+                continue
+            for action in phase:
+                if (
+                    action.get("actorCellId") == cell_id
+                    and action.get("type") == "ban"
+                    and not action.get("completed")
+                ):
+                    return action
+        return None
+
     def _loop(self):
         while not self._stop_event.is_set():
             try:
@@ -92,17 +114,9 @@ class AutoBan(ThreadedFeature):
                     self._sleep(0.3)
                     continue
 
-                for actions in session.get("actions", []):
-                    if not isinstance(actions, list):
-                        continue
-                    for action in actions:
-                        if (
-                            self.enabled
-                            and action.get("actorCellId") == cell_id
-                            and action.get("type") == "ban"
-                            and not action.get("completed")
-                        ):
-                            self._ban_champion(action)
+                pending = self.find_pending_action(session, cell_id)
+                if pending is not None:
+                    self._ban_champion(pending)
 
                 self._sleep(0.3)
             except Exception:

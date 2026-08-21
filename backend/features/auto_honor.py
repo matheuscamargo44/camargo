@@ -56,6 +56,22 @@ class AutoHonor(ThreadedFeature):
         except Exception:
             logger.exception("AutoHonor._update_party_members failed")
 
+    def pick_honor_target(self, eligible_players):
+        """Who to honor: a duo/party member if one is eligible, else the first.
+
+        Lives outside the loop so the choice can be tested without running a
+        background thread.
+        """
+        for player in eligible_players:
+            puuid = player.get("puuid")
+            summoner_id = player.get("summonerId")
+            if (puuid and puuid in self.party_member_puuids) or (
+                summoner_id and summoner_id in self.party_member_summoner_ids
+            ):
+                return player, True
+
+        return eligible_players[0], False
+
     def _loop(self):
         while not self._stop_event.is_set():
             if not self.lcu.is_league_connected():
@@ -81,22 +97,7 @@ class AutoHonor(ThreadedFeature):
                     )
 
                     if eligible_players and game_id and game_id != self.last_honored_game_id:
-                        # Prioritize duo / party member if present
-                        target_player = None
-                        is_duo = False
-
-                        for p in eligible_players:
-                            p_puuid = p.get("puuid")
-                            p_summoner_id = p.get("summonerId")
-                            if (p_puuid and p_puuid in self.party_member_puuids) or (
-                                p_summoner_id and p_summoner_id in self.party_member_summoner_ids
-                            ):
-                                target_player = p
-                                is_duo = True
-                                break
-
-                        if not target_player:
-                            target_player = eligible_players[0]
+                        target_player, is_duo = self.pick_honor_target(eligible_players)
 
                         summoner_id = target_player.get("summonerId")
                         puuid = target_player.get("puuid")

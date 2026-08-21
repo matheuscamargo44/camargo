@@ -71,44 +71,43 @@ def test_auto_honor_toggle():
     assert feature.get_status()["enabled"] is True
 
 
-def test_auto_honor_duo_priority():
-    lcu = MagicMock()
-    lcu.is_league_connected.return_value = True
-
-    events = []
-    feature = AutoHonor(lcu, {"auto_honor": {"enabled": True}}, on_event=lambda lvl, msg: events.append(msg))
+def test_auto_honor_prefers_the_duo_partner():
+    """Used to re-implement the choice inside the test: disabling the real
+    logic left it green. Now it calls the feature."""
+    feature = AutoHonor(MagicMock(), {"auto_honor": {"enabled": True}})
     feature.party_member_puuids = {"duo-puuid-123"}
 
-    # Mock ballot with allies (one is duo, one is random)
-    ballot = {
-        "gameId": 999888777,
-        "eligibleAllies": [
-            {"summonerId": 111, "puuid": "random-puuid-111", "summonerName": "RandomAlly"},
-            {"summonerId": 222, "puuid": "duo-puuid-123", "summonerName": "MyDuoPartner"},
-        ]
-    }
+    eligible = [
+        {"summonerId": 111, "puuid": "random-puuid-111", "summonerName": "RandomAlly"},
+        {"summonerId": 222, "puuid": "duo-puuid-123", "summonerName": "MyDuoPartner"},
+    ]
 
-    ballot_res = MagicMock(status_code=200)
-    ballot_res.json.return_value = ballot
-    honor_res = MagicMock(status_code=200)
-
-    lcu.lcu_request.side_effect = [ballot_res, honor_res]
-
-    # Run one pass of ballot check logic
-    ballot_data = lcu.lcu_request("GET", "/lol-honor-v2/v1/ballot").json()
-    eligible = ballot_data.get("eligibleAllies", [])
-
-    target = None
-    is_duo = False
-    for p in eligible:
-        if p.get("puuid") in feature.party_member_puuids:
-            target = p
-            is_duo = True
-            break
+    target, is_duo = feature.pick_honor_target(eligible)
 
     assert is_duo is True
     assert target["summonerName"] == "MyDuoPartner"
-    assert target["puuid"] == "duo-puuid-123"
+
+
+def test_auto_honor_falls_back_to_the_first_ally():
+    feature = AutoHonor(MagicMock(), {"auto_honor": {"enabled": True}})
+
+    eligible = [{"summonerId": 111, "summonerName": "RandomAlly"}]
+    target, is_duo = feature.pick_honor_target(eligible)
+
+    assert is_duo is False
+    assert target["summonerName"] == "RandomAlly"
+
+
+def test_auto_honor_matches_a_party_member_by_summoner_id():
+    feature = AutoHonor(MagicMock(), {"auto_honor": {"enabled": True}})
+    feature.party_member_summoner_ids = {222}
+
+    target, is_duo = feature.pick_honor_target(
+        [{"summonerId": 111, "summonerName": "Random"}, {"summonerId": 222, "summonerName": "Duo"}]
+    )
+
+    assert is_duo is True
+    assert target["summonerName"] == "Duo"
 
 
 def test_profile_and_client_icon_allow_zero():
