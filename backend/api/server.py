@@ -6,10 +6,15 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from core.activity_log import ACTIVITY_LOG, RENDERER_LOGGER
+from core.activity_log import install as install_activity_log
 from core.auth import TOKEN_HEADER, is_valid_token
 from features.registry import FeatureRegistry
 
 logger = logging.getLogger(__name__)
+
+# Installed before the registry is built so feature construction is captured.
+install_activity_log()
 
 app = FastAPI(title="Camargo backend")
 
@@ -33,7 +38,7 @@ async def require_auth_token(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type", TOKEN_HEADER],
 )
 
@@ -67,6 +72,47 @@ async def lifespan(_app: FastAPI):
 app.router.lifespan_context = lifespan
 
 
+VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+MAX_CLIENT_MESSAGE = 4000
+
+
+@app.get("/logs")
+def read_logs(after: int = 0, limit: int = 750):
+    """Entries newer than `after`, so the UI can poll incrementally."""
+    entries = ACTIVITY_LOG.entries(after=after, limit=max(1, min(limit, 750)))
+    return {
+        "entries": entries,
+        "next": entries[-1]["seq"] if entries else after,
+    }
+
+
+@app.post("/logs/client")
+def write_client_log(payload: dict = Body(default={})):
+    """Errors raised in the renderer, so one copy of the log has both sides."""
+    message = str(payload.get("message", "")).strip()[:MAX_CLIENT_MESSAGE]
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    level = str(payload.get("level", "ERROR")).upper()
+    if level not in VALID_LOG_LEVELS:
+        level = "ERROR"
+
+    detail = payload.get("detail")
+    if detail is not None:
+        detail = str(detail)[:MAX_CLIENT_MESSAGE]
+
+    source = str(payload.get("source", "")).strip() or RENDERER_LOGGER
+    ACTIVITY_LOG.record(level, message, source=f"{RENDERER_LOGGER}.{source}"[:80], detail=detail)
+    return {"ok": True}
+
+
+@app.delete("/logs")
+def clear_logs():
+    ACTIVITY_LOG.clear()
+    logger.info("Activity log cleared")
+    return {"ok": True}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "league_connected": registry.lcu.is_league_connected()}
@@ -91,7 +137,7 @@ def get_summoner():
                         ranked_tier = solo.get("tier", "UNRANKED")
                         ranked_division = solo.get("division", "")
             except Exception:
-                pass
+                logger.exception("get_summoner failed")
 
             return {
                 "connected": True,
@@ -103,7 +149,7 @@ def get_summoner():
                 "ranked_division": ranked_division,
             }
     except Exception:
-        pass
+        logger.exception("get_summoner failed")
     return {"connected": False}
 
 
