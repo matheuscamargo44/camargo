@@ -29,6 +29,7 @@ export function renderCategoryScreen(root, { categories }) {
   }
 
   const updaters = {};
+  const disposers = [];
 
   for (const category of categories) {
     const metas = metaByCategory.get(category);
@@ -37,17 +38,23 @@ export function renderCategoryScreen(root, { categories }) {
     const list = el("div", { class: "feature-list" });
 
     for (const meta of metas) {
-      const { cardEl, updateStatus } = buildFeatureCard(meta, {});
+      const { cardEl, updateStatus, dispose } = buildFeatureCard(meta, {});
       updaters[meta.key] = updateStatus;
+      disposers.push(dispose);
       list.appendChild(cardEl);
     }
 
     root.appendChild(list);
   }
 
-  return onFeaturesUpdate((features) => {
+  const unsubscribeFeatures = onFeaturesUpdate((features) => {
     for (const [key, updateStatus] of Object.entries(updaters)) {
       if (features[key]) updateStatus(features[key]);
     }
   });
+
+  return () => {
+    unsubscribeFeatures();
+    for (const dispose of disposers) dispose();
+  };
 }

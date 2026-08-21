@@ -165,10 +165,6 @@ main#view-root.view-enter {
   animation: fadeIn 0.18s ease;
 }
 
-.view-title { font-size: 18px; margin: 0 0 14px; }
-.section-title { font-size: 12px; letter-spacing: 0.01em; color: var(--text-muted); margin: 18px 0 10px; }
-.section-title:first-of-type { margin-top: 0; }
-
 .empty-state {
   color: var(--text-muted);
   display: flex;
@@ -317,13 +313,6 @@ main#view-root.view-enter {
 .stat-champ-thumb.round {
   border-radius: 50%;
 }
-.stat-special-badge {
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
 /* ── Feature List & Unified Compact Rows ───────────────────────── */
 .feature-list {
   display: flex;
@@ -494,40 +483,6 @@ main#view-root.view-enter {
   font-weight: 500;
 }
 
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.card-header .card-icon {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: var(--accent-soft);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: var(--accent);
-}
-.card-header .card-icon svg {
-  width: 15px;
-  height: 15px;
-}
-.card-header-text h3 { margin: 0; font-size: 12.5px; font-weight: 600; }
-.card-subtitle { margin: 1px 0 0; font-size: 11px; color: var(--text-muted); }
-
-.card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.card-status { display: flex; flex-direction: column; gap: 5px; }
-.card-status:empty { display: none; }
-.stat-row { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; }
-.stat-label { color: var(--text-muted); }
-.stat-value { font-weight: 600; }
-
 /* ── Status Pill ────────────────────────────────────────────────── */
 .status-pill {
   display: inline-flex;
@@ -551,25 +506,6 @@ main#view-root.view-enter {
   background: currentColor;
 }
 .status-pill.on { background: var(--success-soft); color: var(--success); }
-
-/* ── Card Toggles ───────────────────────────────────────────────── */
-.card-toggles { display: flex; flex-direction: column; gap: 6px; }
-.card-toggles:empty { display: none; }
-.card-switch-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11.5px;
-  color: var(--text-muted);
-}
-
-.card-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.card-controls:empty { display: none; }
-.card-action-label { margin: 0 0 4px; font-size: 11px; color: var(--text-muted); }
 
 /* ── Buttons ────────────────────────────────────────────────────── */
 .btn {
@@ -1073,3 +1009,57 @@ main#view-root.view-enter {
   color: var(--text-muted);
 }
 
+
+/* ── Toasts ─────────────────────────────────────────────────────── */
+#toast-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  border-left-width: 3px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.45;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  animation: slideUp var(--transition-smooth);
+}
+
+.toast-message { overflow-wrap: anywhere; }
+.toast-success { border-left-color: var(--success); }
+.toast-error   { border-left-color: var(--danger); }
+.toast-warn    { border-left-color: var(--warning); }
+.toast-info    { border-left-color: var(--accent); }
+
+.toast-leaving { animation: fadeOut var(--transition-normal) forwards; }
+
+@keyframes fadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast, .toast-leaving { animation: none; }
+}
+
+/* Action in flight: the button stays visible but inert */
+.btn-busy {
+  opacity: 0.6;
+  cursor: progress;
+}

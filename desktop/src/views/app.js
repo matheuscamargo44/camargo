@@ -1,5 +1,6 @@
 import { el } from "../components.js";
-import { startEventStream } from "../event-stream.js";
+import { onEvent, startEventStream } from "../event-stream.js";
+import { showToast } from "../toast.js";
 import { mountLeagueStatus } from "../league-status.js";
 import { registerRoute, startRouter } from "../router.js";
 import { startPolling } from "../state.js";
@@ -40,6 +41,9 @@ async function bootstrap() {
 
   buildNav();
   mountLeagueStatus(leagueStatusSlot);
+  // Until now nothing consumed the stream: every success/info the backend
+  // reported was buffered and dropped.
+  onEvent((entry) => showToast(entry.level, entry.message));
   startEventStream();
 
   registerRoute("/automation", renderAutomationView);
