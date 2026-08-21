@@ -44,7 +44,22 @@ export function buildFeatureCard(meta, initialStatus) {
   const statusContainer = el("div", { class: "feature-row-status" });
   textWrap.appendChild(titleEl);
   textWrap.appendChild(statusContainer);
-  leftEl.appendChild(textWrap);
+  const feedbackEl = el("span", { class: "feature-inline-feedback", style: "display: none;" });
+  textWrap.appendChild(feedbackEl);
+
+  let feedbackTimer = null;
+  function showFeedback(msg, isError = false) {
+    if (feedbackTimer) clearTimeout(feedbackTimer);
+    feedbackEl.textContent = `· ${msg}`;
+    feedbackEl.style.display = "inline";
+    feedbackEl.style.color = isError ? "#f87171" : "#34d399";
+    feedbackEl.style.fontSize = "11px";
+    feedbackEl.style.fontWeight = "500";
+    feedbackTimer = setTimeout(() => {
+      feedbackEl.textContent = "";
+      feedbackEl.style.display = "none";
+    }, 4000);
+  }
 
   // Right column: Switches and Action buttons
   const rightEl = el("div", { class: "feature-row-right" });
@@ -54,7 +69,6 @@ export function buildFeatureCard(meta, initialStatus) {
 
   const toggleDefs = FEATURE_TOGGLES[meta.key] || [];
   const actionDefs = FEATURE_ACTIONS[meta.key] || [];
-  const toggleFields = new Set(toggleDefs.map((t) => t.field));
 
   function renderStatus(status) {
     statusContainer.innerHTML = "";
@@ -65,138 +79,101 @@ export function buildFeatureCard(meta, initialStatus) {
       return;
     }
 
-    // Special formatted status for Loot & Crafting
-    if (meta.key === "mass_disenchant") {
-      const frag = status.key_fragments ?? 0;
-      const chests = status.chests ?? 0;
-      const shards = status.total_shards ?? 0;
-      const text = `${frag} Keys · ${chests} Chests · ${shards} Shards`;
-      statusContainer.appendChild(el("span", { class: "feature-status-text", text }));
-      return;
-    }
-
-    // Special formatted status for Instalock
-    if (meta.key === "instalock") {
-      const champ = status.instalock_champion || status.champion || "None";
-      statusContainer.appendChild(formatSpecialDisplay("instalock_champion", champ));
-      return;
-    }
-
-    // Special formatted status for AutoBan
-    if (meta.key === "autoban") {
-      const champ = status.autoban_champion || status.champion || "None";
-      statusContainer.appendChild(formatSpecialDisplay("autoban_champion", champ));
-      return;
-    }
-
-    // Special formatted status for ARAM Bench Swap
-    if (meta.key === "aram_bench_swap") {
-      const champ = status.target_champion || status.champion || "None";
-      statusContainer.appendChild(formatSpecialDisplay("target_champion", champ));
-      return;
-    }
-
     const items = [];
 
     for (const [field, value] of Object.entries(status)) {
-      if (field === "key" || toggleFields.has(field)) continue;
-      if (value === null || value === undefined || value === "") continue;
+      if (field === "key") continue;
 
-      const label = STATUS_FIELD_LABELS[field] || field.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-
-      if (isSpecialDisplayField(field, value)) {
-        const specialNode = formatSpecialDisplay(field, value);
-        items.push(el("div", { class: "feature-status-item" }, [
-          el("span", { class: "feature-status-label", text: `${label}:` }),
-          specialNode,
-        ]));
-      } else if (typeof value === "boolean") {
+      if (isBooleanField(field, value)) {
         items.push(statusPill(field, value));
+      } else if (isSpecialDisplayField(field)) {
+        items.push(formatSpecialDisplay(field, value));
       } else {
-        const formatted = formatValue(value);
-        if (formatted) {
-          items.push(el("span", { class: "feature-status-text", text: `${label}: ${formatted}` }));
-        }
+        const label = STATUS_FIELD_LABELS[field] || field;
+        const valText = formatValue(field, value);
+        items.push(el("span", { class: "feature-status-text", text: `${label}: ${valText}` }));
       }
     }
 
-    if (items.length > 0) {
-      for (const item of items) {
-        statusContainer.appendChild(item);
+    if (items.length === 0) {
+      if (FEATURE_DESCRIPTIONS[meta.key]) {
+        items.push(el("span", { class: "feature-row-desc", text: FEATURE_DESCRIPTIONS[meta.key] }));
+      } else {
+        items.push(el("span", { class: "feature-status-muted", text: "Ready" }));
       }
-    } else if (FEATURE_DESCRIPTIONS[meta.key]) {
-      statusContainer.appendChild(el("span", { class: "feature-row-desc", text: FEATURE_DESCRIPTIONS[meta.key] }));
+    }
+
+    for (const item of items) {
+      statusContainer.appendChild(item);
     }
   }
+
+  // Build controls (right side)
+  const switchesWrap = el("div", { class: "row-switches-group" });
+  for (const toggleDef of toggleDefs) {
+    const { element, button } = buildToggleControl(meta.key, toggleDef);
+    switchesWrap.appendChild(element);
+
+    if (initialStatus) {
+      const initialVal = toggleDef.field
+        ? Boolean(initialStatus[toggleDef.field])
+        : Boolean(initialStatus.enabled);
+      button.setAttribute("aria-checked", String(initialVal));
+      button.classList.toggle("active", initialVal);
+    }
+  }
+  if (toggleDefs.length > 0) rightEl.appendChild(switchesWrap);
+
+  const actionsWrap = el("div", { class: "row-actions-group" });
+  for (const actionDef of actionDefs) {
+    actionsWrap.appendChild(buildActionControl(meta.key, actionDef, showFeedback));
+  }
+  if (actionDefs.length > 0) rightEl.appendChild(actionsWrap);
 
   renderStatus(initialStatus);
 
-  // Build Toggles
-  const toggleButtons = [];
-  for (const toggleDef of toggleDefs) {
-    const { element, button } = buildToggleControl(meta.key, toggleDef, initialStatus, toggleDefs.length > 1);
-    toggleButtons.push({ ...toggleDef, button });
-    rightEl.appendChild(element);
-  }
-
-  // Build Action Buttons
-  const actionButtons = [];
-  for (const actionDef of actionDefs) {
-    const btn = buildActionControl(meta.key, actionDef);
-    actionButtons.push(btn);
-    rightEl.appendChild(btn);
-  }
-
-  function applyLeagueState(connected) {
-    rowEl.classList.toggle("league-disconnected", !connected);
-    for (const { button } of toggleButtons) {
-      button.disabled = !connected;
-    }
-    for (const btn of actionButtons) {
-      btn.disabled = !connected;
-    }
-  }
-
-  applyLeagueState(isLeagueConnected());
-  onHealthUpdate((health) => {
-    applyLeagueState(Boolean(health?.league_connected));
-  });
-
   return {
-    cardEl: rowEl,
-    updateStatus: (status) => {
+    element: rowEl,
+    update(status) {
       renderStatus(status);
-      for (const { field, invert, button } of toggleButtons) {
-        if (!status || !(field in status)) continue;
-        const checked = invert ? !status[field] : Boolean(status[field]);
-        button.classList.toggle("switch-on", checked);
-        button.classList.toggle("switch-off", !checked);
-        button.setAttribute("aria-pressed", String(checked));
-      }
+      if (!status) return;
+
+      const buttons = rightEl.querySelectorAll(".switch-button");
+      toggleDefs.forEach((def, index) => {
+        const val = def.field ? Boolean(status[def.field]) : Boolean(status.enabled);
+        const btn = buttons[index];
+        if (btn) {
+          btn.setAttribute("aria-checked", String(val));
+          btn.classList.toggle("active", val);
+        }
+      });
     },
   };
 }
 
-function buildToggleControl(key, toggleDef, initialStatus, showLabel = false) {
-  const checked = toggleDef.invert ? !initialStatus?.[toggleDef.field] : Boolean(initialStatus?.[toggleDef.field]);
-  const button = toggleSwitch(checked, async () => {
+function buildToggleControl(key, toggleDef) {
+  const isEnabled = false;
+  const button = toggleSwitch(isEnabled, async (btn) => {
     if (!isLeagueConnected()) return;
-    button.disabled = true;
+    const currentState = btn.getAttribute("aria-checked") === "true";
+    const nextState = !currentState;
+    btn.setAttribute("aria-checked", String(nextState));
+    btn.classList.toggle("active", nextState);
+
     try {
       if (toggleDef.action) {
-        await callAction(key, toggleDef.action, {});
+        await callAction(key, toggleDef.action, { state: nextState });
       } else {
         await toggleFeature(key);
       }
       await refreshNow();
     } catch {
-      // Ignore
-    } finally {
-      button.disabled = !isLeagueConnected();
+      btn.setAttribute("aria-checked", String(currentState));
+      btn.classList.toggle("active", currentState);
     }
   });
 
-  if (showLabel) {
+  if (toggleDef.label) {
     const element = el("div", { class: "row-switch-labeled" }, [
       el("span", { class: "row-switch-label", text: toggleDef.label }),
       button,
@@ -207,7 +184,7 @@ function buildToggleControl(key, toggleDef, initialStatus, showLabel = false) {
   return { element: button, button };
 }
 
-function buildActionControl(key, actionDef) {
+function buildActionControl(key, actionDef, showFeedback = () => {}) {
   if (actionDef.kind === "champion-picker") {
     return actionButton(
       actionDef.label,
@@ -220,9 +197,10 @@ function buildActionControl(key, actionDef) {
         if (champName === null) return;
         try {
           await callAction(key, actionDef.action, { [actionDef.paramName || "champion_name"]: champName });
+          showFeedback("Updated");
           await refreshNow();
-        } catch {
-          // Ignore
+        } catch (err) {
+          showFeedback(err.message || "Failed", true);
         }
       },
       "secondary"
@@ -238,9 +216,10 @@ function buildActionControl(key, actionDef) {
         if (skinId === null) return;
         try {
           await callAction(key, actionDef.action, { skin_id: skinId });
+          showFeedback("Applied");
           await refreshNow();
-        } catch {
-          // Ignore
+        } catch (err) {
+          showFeedback(err.message || "Failed", true);
         }
       },
       "secondary"
@@ -256,9 +235,10 @@ function buildActionControl(key, actionDef) {
         if (iconId === null) return;
         try {
           await callAction(key, actionDef.action, { icon_id: iconId });
+          showFeedback("Applied");
           await refreshNow();
-        } catch {
-          // Ignore
+        } catch (err) {
+          showFeedback(err.message || "Failed", true);
         }
       },
       "secondary"
@@ -274,9 +254,10 @@ function buildActionControl(key, actionDef) {
         if (result === null) return;
         try {
           await callAction(key, actionDef.action, result);
+          showFeedback("Updated");
           await refreshNow();
-        } catch {
-          // Ignore
+        } catch (err) {
+          showFeedback(err.message || "Failed", true);
         }
       },
       "secondary"
@@ -292,9 +273,10 @@ function buildActionControl(key, actionDef) {
         if (result === null) return;
         try {
           await callAction(key, actionDef.action, result);
+          showFeedback("Updated");
           await refreshNow();
-        } catch {
-          // Ignore
+        } catch (err) {
+          showFeedback(err.message || "Failed", true);
         }
       },
       "secondary"
@@ -317,9 +299,10 @@ function buildActionControl(key, actionDef) {
         try {
           const result = await callAction(key, actionDef.action, {});
           if (actionDef.opensUrl && result.result) window.open(result.result, "_blank");
+          showFeedback("Done");
           await refreshNow();
-        } catch {
-          // Ignore
+        } catch (err) {
+          showFeedback(err.message || "Failed", true);
         }
       },
       variant
@@ -340,9 +323,10 @@ function buildActionControl(key, actionDef) {
         if (!values) return;
         try {
           await callAction(key, actionDef.action, values);
+          showFeedback("Saved");
           await refreshNow();
-        } catch {
-          // Ignore
+        } catch (err) {
+          showFeedback(err.message || "Failed", true);
         }
       },
       "secondary"
@@ -356,12 +340,12 @@ function buildActionControl(key, actionDef) {
       try {
         const result = await callAction(key, actionDef.action, {});
         if (actionDef.opensUrl && result.result) window.open(result.result, "_blank");
+        showFeedback("Done");
         await refreshNow();
-      } catch {
-        // Ignore
+      } catch (err) {
+        showFeedback(err.message || "Failed", true);
       }
     },
     actionDef.quiet ? "secondary" : "primary"
   );
 }
-

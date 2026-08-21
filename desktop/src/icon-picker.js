@@ -1,6 +1,7 @@
 import { el } from "./components.js";
 import { getLatestVersion, profileIconUrl } from "./ddragon.js";
 import { openOverlay, closeModal } from "./modal.js";
+import { callAction } from "./api.js";
 
 const iconsUrlFor = (version) =>
   `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/profileicon.json`;
@@ -13,9 +14,15 @@ async function loadIcons() {
   const version = await getLatestVersion();
   const data = await fetch(iconsUrlFor(version)).then((r) => r.json());
 
-  cachedIcons = Object.keys(data.data)
-    .map(Number)
-    .filter((id) => !isNaN(id) && id > 0)
+  const iconIds = new Set(
+    Object.keys(data.data)
+      .map(Number)
+      .filter((id) => !isNaN(id) && id >= 0)
+  );
+  // Ensure icon 0 (classic minion) is always present
+  iconIds.add(0);
+
+  cachedIcons = Array.from(iconIds)
     .sort((a, b) => a - b)
     .map((id) => ({ id, url: profileIconUrl(id, version) }));
 
@@ -108,13 +115,13 @@ export function openIconPicker({ kind = "profile" } = {}) {
 
     const box = el("div", { class: "modal-box icon-picker-box" });
     box.appendChild(
-      el("h2", { text: kind === "client" ? "Choose Client Icon" : "Choose Profile Icon" })
+      el("h2", { text: kind === "client" ? "Choose Client Icon (Any Icon)" : "Choose Profile Icon (Owned)" })
     );
 
     const search = el("input", {
       type: "text",
       class: "icon-picker-search",
-      placeholder: kind === "profile" ? "Search by ID (1-100)..." : "Search by ID...",
+      placeholder: kind === "profile" ? "Search owned icons by ID..." : "Search all icons by ID (0-6000+)...",
     });
     box.appendChild(search);
 
@@ -129,15 +136,36 @@ export function openIconPicker({ kind = "profile" } = {}) {
 
     overlay.appendChild(box);
 
-    loadIcons()
-      .then((icons) => {
-        const availableIcons = kind === "profile" ? icons.filter((i) => i.id >= 1 && i.id <= 100) : icons;
+    Promise.all([
+      loadIcons(),
+      kind === "profile"
+        ? callAction("profile_icon", "get_owned_icons")
+            .then((res) => new Set(res.result || []))
+            .catch(() => new Set(Array.from({ length: 29 }, (_, i) => i)))
+        : Promise.resolve(null),
+    ])
+      .then(async ([icons, ownedSet]) => {
+        const version = await getLatestVersion();
+        let availableIcons;
+
+        if (kind === "profile" && ownedSet) {
+          // Map known icons and create entries for any owned icon not in DDragon
+          const ddragonMap = new Map(icons.map((i) => [i.id, i]));
+          availableIcons = Array.from(ownedSet)
+            .sort((a, b) => a - b)
+            .map((id) => ddragonMap.get(id) || { id, url: profileIconUrl(id, version) });
+        } else {
+          availableIcons = icons;
+        }
+
         const scroller = setupInfiniteGrid(grid, finish);
         scroller.reset(availableIcons);
 
         const debouncedSearch = debounce(() => {
           const query = search.value.trim();
-          const filtered = query ? availableIcons.filter((icon) => String(icon.id).includes(query)) : availableIcons;
+          const filtered = query
+            ? availableIcons.filter((icon) => String(icon.id).includes(query))
+            : availableIcons;
           scroller.reset(filtered);
         }, 150);
 

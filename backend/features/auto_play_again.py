@@ -15,6 +15,7 @@ class AutoPlayAgain(Feature):
         super().__init__(lcu_client, config, on_event)
         self.last_handled_phase = None
         self.last_search_attempt = 0
+        self.pending_play_again_search = False
 
     def get_status(self) -> dict:
         return {
@@ -48,7 +49,7 @@ class AutoPlayAgain(Feature):
         self.on_event("info", f"Play Again {'enabled' if new_state else 'disabled'}")
 
         if new_state:
-            # If already in lobby, trigger search immediately
+            # If already in lobby, trigger search once immediately
             try:
                 phase_res = self.lcu.lcu_request("GET", "/lol-gameflow/v1/gameflow-phase")
                 if phase_res.status_code == 200 and phase_res.json() == "Lobby":
@@ -80,13 +81,16 @@ class AutoPlayAgain(Feature):
                             play_again_res = self.lcu.lcu_request("POST", "/lol-lobby/v2/play-again")
                             if play_again_res.status_code in (200, 201, 204):
                                 self.on_event("success", "Play Again: Returned to lobby")
-                                time.sleep(1.5)
-                                self.start_search()
+                                self.pending_play_again_search = True
                     elif phase == "Lobby":
                         self.last_handled_phase = "Lobby"
-                        self.start_search()
+                        if self.pending_play_again_search:
+                            self.pending_play_again_search = False
+                            time.sleep(1.0)
+                            self.start_search()
                     elif phase in ("Matchmaking", "ReadyCheck", "ChampSelect", "InProgress"):
                         self.last_handled_phase = phase
+                        self.pending_play_again_search = False
             except Exception as e:
                 logger.debug(f"PlayAgain loop error: {e}")
 

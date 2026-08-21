@@ -30,7 +30,7 @@ export function isBooleanField(field, value) {
 }
 
 export function isSpecialDisplayField(field, value) {
-  if (value === null || value === undefined || value === "") return false;
+  if (arguments.length > 1 && (value === null || value === undefined || value === "")) return false;
   return (
     field === "instalock_champion" ||
     field === "autoban_champion" ||
