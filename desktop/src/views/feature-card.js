@@ -8,7 +8,6 @@ import { openSkinPicker } from "../skin-picker.js";
 import { openTitlePicker } from "../title-picker.js";
 import { featureIcon } from "../icons.js";
 import { isLeagueConnected, onHealthUpdate, refreshNow } from "../state.js";
-import { showError } from "../toast.js";
 import { formatSpecialDisplay, formatValue, isBooleanField, isSpecialDisplayField, STATUS_FIELD_LABELS, statusPill } from "../status-format.js";
 import { FEATURE_ACTIONS, FEATURE_TOGGLES } from "./forms.js";
 
@@ -195,7 +194,7 @@ function buildToggleControl(key, toggleDef, initialStatus, showLabel = false) {
       }
       await refreshNow();
     } catch (error) {
-      showError(error);
+      console.error(`toggle ${key} failed:`, error);
     } finally {
       button.disabled = !isLeagueConnected();
     }
@@ -288,8 +287,7 @@ function buildActionControl(key, actionDef) {
         if (actionDef.opensUrl && result.result) window.open(result.result, "_blank");
         await refreshNow();
       } catch (error) {
-        // These used to be swallowed: the backend's reason never reached anyone.
-        showError(error);
+        console.error(`${actionDef.action} on ${key} failed:`, error);
       } finally {
         button.classList.remove("btn-busy");
         button.disabled = !isLeagueConnected();
