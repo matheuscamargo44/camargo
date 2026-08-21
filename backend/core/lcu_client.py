@@ -5,6 +5,8 @@ LeagueClientUx.exe process. No feature/business logic lives here.
 """
 import base64
 import json
+import threading
+import time
 
 import psutil
 import requests
@@ -14,6 +16,12 @@ urllib3.disable_warnings()
 
 REQUEST_TIMEOUT_SECONDS = 5
 REQUEST_RETRIES = 2
+#: Discovering credentials means walking every process on the machine and
+#: reading its command line (~16ms with 250 processes). Nine feature loops plus
+#: the /features poll used to pay that cost several times a second, so results
+#: are reused for a moment. A failed request still forces an immediate rescan,
+#: which is what actually matters when the client restarts on a new port.
+CREDENTIAL_TTL_SECONDS = 5.0
 
 
 def _split_arg(arg, prefix):
@@ -91,10 +99,13 @@ class LCUClient:
     """
 
     def __init__(self):
+        # Every feature loop shares this instance across threads.
+        self._lock = threading.RLock()
         self.league_port = None
         self.league_token = None
         self.league_url = None
         self.league_headers = {}
+        self._league_scanned_at = 0.0
         self.riot_port = None
         self.riot_token = None
         self.riot_url = None
@@ -103,27 +114,40 @@ class LCUClient:
         self.update_riot_credentials()
 
     def update_league_credentials(self):
-        self.league_port, self.league_token = find_league_client_credentials()
-        self.league_url = _service_url(self.league_port)
-        self.league_headers = _headers(self.league_token)
+        """Rescan for League credentials, ignoring the cache."""
+        port, token = find_league_client_credentials()
+        with self._lock:
+            self.league_port = port
+            self.league_token = token
+            self.league_url = _service_url(port)
+            self.league_headers = _headers(token)
+            self._league_scanned_at = time.monotonic()
 
     def update_riot_credentials(self):
-        self.riot_port, self.riot_token = find_riot_client_credentials()
-        self.riot_url = _service_url(self.riot_port)
-        self.riot_headers = _headers(self.riot_token)
+        """Rescan for Riot client credentials, ignoring the cache."""
+        port, token = find_riot_client_credentials()
+        with self._lock:
+            self.riot_port = port
+            self.riot_token = token
+            self.riot_url = _service_url(port)
+            self.riot_headers = _headers(token)
+
+    def _refresh_league_if_stale(self):
+        with self._lock:
+            fresh = time.monotonic() - self._league_scanned_at < CREDENTIAL_TTL_SECONDS
+            if fresh:
+                return
+            self.update_league_credentials()
 
     def is_league_connected(self):
-        self.update_league_credentials()
+        self._refresh_league_if_stale()
         return bool(self.league_url)
 
-    def is_riot_connected(self):
-        self.update_riot_credentials()
-        return bool(self.riot_url)
-
     def _service_connection(self, service):
-        if service == "league":
-            return self.league_url, self.league_headers
-        return self.riot_url, self.riot_headers
+        with self._lock:
+            if service == "league":
+                return self.league_url, self.league_headers
+            return self.riot_url, self.riot_headers
 
     def _request(self, method, base_url, headers, endpoint, body, refresh_credentials, service):
         method = method.upper()

@@ -62,7 +62,14 @@ export async function startPolling(intervalMs = 4000) {
     await wait(1000);
   }
 
-  setInterval(pollOnce, intervalMs);
+  // Sequential, not setInterval: a stalled League client can hold /features
+  // open for far longer than the interval, and overlapping polls would pile up.
+  (async () => {
+    for (;;) {
+      await wait(intervalMs);
+      await pollOnce();
+    }
+  })();
 }
 
 export function refreshNow() {

@@ -102,21 +102,28 @@ def load_config():
     with CONFIG_LOCK:
         try:
             with CONFIG_PATH.open("r", encoding="utf-8") as config_file:
-                config = json.load(config_file)
+                stored = json.load(config_file)
+            on_disk = True
         except (FileNotFoundError, json.JSONDecodeError):
-            config = {}
+            stored = {}
+            on_disk = False
 
-        config = _merge_defaults(config, DEFAULT_CONFIG)
-        save_config(config)
+        config = _merge_defaults(stored, DEFAULT_CONFIG)
+
+        # Materialize the file on first run or after a schema change, but do
+        # not rewrite it on every read.
+        if not on_disk or config != stored:
+            save_config(config)
+
         return config
 
 
 def save_config(config):
     with CONFIG_LOCK:
+        # Every feature thread mutates this same dict; serialize a snapshot so
+        # a concurrent toggle cannot change it mid-dump.
+        snapshot = json.dumps(copy.deepcopy(config), indent=4) + "\n"
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = CONFIG_PATH.with_suffix(f"{CONFIG_PATH.suffix}.tmp")
-        temporary_path.write_text(
-            json.dumps(config, indent=4) + "\n",
-            encoding="utf-8",
-        )
+        temporary_path.write_text(snapshot, encoding="utf-8")
         temporary_path.replace(CONFIG_PATH)

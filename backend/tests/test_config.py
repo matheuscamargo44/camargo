@@ -45,3 +45,16 @@ def test_config_path_next_to_source_in_dev(monkeypatch):
     expected_dir = config_module.Path(config_module.__file__).resolve().parent.parent
 
     assert path == expected_dir / "config.json"
+
+
+def test_load_config_does_not_rewrite_an_up_to_date_file(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(config_module, "CONFIG_PATH", config_path)
+
+    config_module.load_config()  # first run writes the defaults
+    first_write = config_path.stat().st_mtime_ns
+
+    for _ in range(5):
+        config_module.load_config()
+
+    assert config_path.stat().st_mtime_ns == first_write, "reading config must not touch the disk"
