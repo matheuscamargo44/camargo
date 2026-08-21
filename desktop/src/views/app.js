@@ -1,5 +1,4 @@
 import { el } from "../components.js";
-import { startEventStream } from "../event-stream.js";
 import { mountLeagueStatus } from "../league-status.js";
 import { registerRoute, startRouter } from "../router.js";
 import { startPolling } from "../state.js";
@@ -40,7 +39,6 @@ async function bootstrap() {
 
   buildNav();
   mountLeagueStatus(leagueStatusSlot);
-  startEventStream();
 
   registerRoute("/automation", renderAutomationView);
   registerRoute("/customization", renderCustomizationView);

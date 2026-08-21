@@ -19,10 +19,6 @@ logger = logging.getLogger(__name__)
 
 TOKEN_ENV_VAR = "CAMARGO_AUTH_TOKEN"
 TOKEN_HEADER = "x-camargo-token"
-#: WebSockets cannot send custom headers, so the token travels as the second
-#: entry of the subprotocol list instead of a query string (which would end up
-#: in logs and browser history).
-WS_SUBPROTOCOL = "camargo.v1"
 
 
 def _resolve_token():

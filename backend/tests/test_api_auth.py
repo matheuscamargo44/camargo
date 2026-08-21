@@ -7,9 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import api.server as server
-from core.auth import AUTH_TOKEN, TOKEN_HEADER, WS_SUBPROTOCOL
+from core.auth import AUTH_TOKEN, TOKEN_HEADER
 
-WS_URL = "/ws/events"
 AUTH = {TOKEN_HEADER: AUTH_TOKEN}
 
 
@@ -35,39 +34,14 @@ def test_actions_reject_an_unauthenticated_caller(client):
     assert response.status_code == 401
 
 
-@pytest.mark.parametrize("origin", ["null", "file://"])
-def test_websocket_accepts_every_renderer_origin(client, origin):
-    """Chromium sends `null` for fetch but `file://` for the WS handshake.
+def test_feature_events_reach_the_log(caplog):
+    """The UI shows no notifications, so the log is the only consumer left."""
+    import logging
 
-    Only accepting `null` here broke the event stream in v0.3.0: the renderer
-    reconnected every 3 seconds and never got through.
-    """
-    with client.websocket_connect(
-        WS_URL, subprotocols=[WS_SUBPROTOCOL, AUTH_TOKEN], headers={"Origin": origin}
-    ) as ws:
-        assert ws.accepted_subprotocol == WS_SUBPROTOCOL
+    with caplog.at_level(logging.INFO, logger="api.server"):
+        server._on_event("success", "Locked Garen")
+        server._on_event("warn", "Could not dodge")
 
-
-def test_websocket_rejects_a_web_page_even_with_the_token(client):
-    from starlette.websockets import WebSocketDisconnect
-
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect(
-            WS_URL,
-            subprotocols=[WS_SUBPROTOCOL, AUTH_TOKEN],
-            headers={"Origin": "https://evil.example"},
-        ):
-            pass
-
-
-@pytest.mark.parametrize(
-    "subprotocols",
-    [None, [WS_SUBPROTOCOL], [WS_SUBPROTOCOL, "wrong-token"], ["other.v1", AUTH_TOKEN]],
-)
-def test_websocket_rejects_a_bad_handshake(client, subprotocols):
-    from starlette.websockets import WebSocketDisconnect
-
-    kwargs = {"subprotocols": subprotocols} if subprotocols else {}
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect(WS_URL, headers={"Origin": "null"}, **kwargs):
-            pass
+    assert "[success] Locked Garen" in caplog.text
+    assert "[warn] Could not dodge" in caplog.text
+    assert caplog.records[-1].levelno == logging.WARNING

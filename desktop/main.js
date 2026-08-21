@@ -174,22 +174,6 @@ ipcMain.on("camargo:get-auth-token", (event) => {
   event.returnValue = AUTH_TOKEN;
 });
 
-// IPC handlers for auto-launch
-ipcMain.handle("get-auto-launch", () => {
-  return app.getLoginItemSettings().openAtLogin;
-});
-
-ipcMain.handle("set-auto-launch", (_event, enabled) => {
-  app.setLoginItemSettings({
-    openAtLogin: Boolean(enabled),
-    openAsHidden: true,
-    path: process.execPath,
-    args: ["--hidden"],
-  });
-  updateTrayMenu();
-  return app.getLoginItemSettings().openAtLogin;
-});
-
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();

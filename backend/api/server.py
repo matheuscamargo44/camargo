@@ -1,14 +1,15 @@
-import asyncio
 import inspect
-import time
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from core.auth import TOKEN_HEADER, WS_SUBPROTOCOL, is_valid_token
+from core.auth import TOKEN_HEADER, is_valid_token
 from features.registry import FeatureRegistry
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Camargo backend")
 
@@ -16,12 +17,6 @@ app = FastAPI(title="Camargo backend")
 #: Listing it explicitly (instead of "*") keeps an ordinary web page from
 #: reading responses even if it somehow learned the token.
 ALLOWED_ORIGINS = ["null"]
-
-#: Chromium serializes the same file:// origin differently on a WebSocket
-#: handshake than on a fetch: "file://" instead of "null". Both are opaque
-#: origins no ordinary web page can present.
-ALLOWED_WS_ORIGINS = {"null", "file://"}
-
 
 @app.middleware("http")
 async def require_auth_token(request: Request, call_next):
@@ -42,24 +37,16 @@ app.add_middleware(
     allow_headers=["Content-Type", TOKEN_HEADER],
 )
 
-_event_subscribers: list[WebSocket] = []
-_event_loop: asyncio.AbstractEventLoop | None = None
+LOG_LEVELS = {"success": logging.INFO, "info": logging.INFO, "warn": logging.WARNING}
 
 
 def _on_event(level: str, message: str):
-    event = {"level": level, "message": message, "ts": time.time()}
-    if _event_loop is None:
-        return
-    for ws in list(_event_subscribers):
-        asyncio.run_coroutine_threadsafe(_safe_send(ws, event), _event_loop)
+    """Features report what they did here.
 
-
-async def _safe_send(ws: WebSocket, event: dict):
-    try:
-        await ws.send_json(event)
-    except Exception:
-        if ws in _event_subscribers:
-            _event_subscribers.remove(ws)
+    The UI deliberately shows no notifications, so these go to the log
+    instead of over the wire.
+    """
+    logger.log(LOG_LEVELS.get(level, logging.INFO), "[%s] %s", level, message)
 
 
 registry = FeatureRegistry(on_event=_on_event)
@@ -70,8 +57,6 @@ _RESERVED_ACTIONS = {"start", "stop", "get_status"}
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global _event_loop
-    _event_loop = asyncio.get_running_loop()
     registry.start_all()
     try:
         yield
@@ -182,29 +167,3 @@ def call_feature_action(key: str, action_name: str, params: dict = Body(default=
         raise HTTPException(status_code=400, detail=str(exc))
 
     return {"result": result, "status": feature.get_status()}
-
-
-@app.websocket("/ws/events")
-async def events(ws: WebSocket):
-    # WebSockets are not covered by CORS: without these checks any web page
-    # could subscribe to the event stream.
-    origin = ws.headers.get("origin")
-    if origin is not None and origin not in ALLOWED_WS_ORIGINS:
-        await ws.close(code=1008)
-        return
-
-    subprotocols = ws.scope.get("subprotocols") or []
-    if len(subprotocols) < 2 or subprotocols[0] != WS_SUBPROTOCOL or not is_valid_token(subprotocols[1]):
-        await ws.close(code=1008)
-        return
-
-    await ws.accept(subprotocol=WS_SUBPROTOCOL)
-    _event_subscribers.append(ws)
-    try:
-        while True:
-            await ws.receive_text()
-    except (WebSocketDisconnect, RuntimeError):
-        pass
-    finally:
-        if ws in _event_subscribers:
-            _event_subscribers.remove(ws)
