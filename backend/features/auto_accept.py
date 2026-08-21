@@ -1,11 +1,8 @@
-import threading
-import time
-
 from core.config import get_automation_delay, save_config
-from features.base import Feature
+from features.base import ThreadedFeature
 
 
-class AutoAccept(Feature):
+class AutoAccept(ThreadedFeature):
     key = "auto_accept"
     title = "Auto Accept"
     category = "Automation"
@@ -13,8 +10,6 @@ class AutoAccept(Feature):
     def __init__(self, lcu_client, config, on_event=None):
         super().__init__(lcu_client, config, on_event)
         self.enabled = bool(self.config["auto_accept"].get("enabled"))
-        self._thread = None
-        self._running = False
 
     def get_status(self) -> dict:
         return {"key": self.key, "enabled": self.enabled}
@@ -33,21 +28,11 @@ class AutoAccept(Feature):
             raise RuntimeError(f"Could not accept match (HTTP {response.status_code})")
         self.on_event("success", "Match accepted")
 
-    def start(self):
-        if self._running:
-            return
-        self._running = True
-        self._thread = threading.Thread(target=self._monitor_queue, daemon=True)
-        self._thread.start()
-
-    def stop(self):
-        self._running = False
-
-    def _monitor_queue(self):
-        while self._running:
+    def _loop(self):
+        while not self._stop_event.is_set():
             if self.enabled:
                 if not self.lcu.is_league_connected():
-                    time.sleep(2)
+                    self._sleep(2)
                     continue
                 try:
                     response = self.lcu.lcu_request(
@@ -57,9 +42,9 @@ class AutoAccept(Feature):
                     if response.status_code == 200 and response.json().get("searchState") == "Found":
                         delay = get_automation_delay(self.config, "auto_accept", 0.0)
                         if delay:
-                            time.sleep(delay)
+                            self._sleep(delay)
                         self.accept_match()
                 except Exception:
                     pass
 
-            time.sleep(0.5)
+            self._sleep(0.5)

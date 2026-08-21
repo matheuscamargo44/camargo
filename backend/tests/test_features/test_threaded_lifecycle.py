@@ -1,0 +1,91 @@
+"""Regression tests for the background-loop lifecycle.
+
+Five features once shipped with a `_loop()` and a `_stop_event` that nothing
+ever created, because the base class `start()` was a no-op: the toggles turned
+green and the automation never ran. These tests fail if a feature declares a
+loop that `start()` does not actually run.
+"""
+import copy
+import threading
+import time
+
+from core.config import DEFAULT_CONFIG
+from features.base import ThreadedFeature
+from features.registry import FEATURE_CLASSES, FeatureRegistry
+
+
+class StubLCUClient:
+    """Reports the client as absent, so every loop takes its idle branch."""
+
+    def is_league_connected(self):
+        return False
+
+    def lcu_request(self, method, endpoint, body=""):
+        raise AssertionError("loops must not call the client while disconnected")
+
+    riot_request = lcu_request
+
+
+def make_registry(monkeypatch):
+    monkeypatch.setattr("features.registry.LCUClient", StubLCUClient)
+    monkeypatch.setattr("features.registry.load_config", lambda: copy.deepcopy(DEFAULT_CONFIG))
+    return FeatureRegistry()
+
+
+def loop_feature_keys():
+    return sorted(cls.key for cls in FEATURE_CLASSES if issubclass(cls, ThreadedFeature))
+
+
+def test_every_feature_with_a_loop_uses_the_shared_lifecycle():
+    for cls in FEATURE_CLASSES:
+        has_own_loop = "_loop" in vars(cls)
+        if has_own_loop:
+            assert issubclass(cls, ThreadedFeature), f"{cls.key} defines _loop but is not threaded"
+        if issubclass(cls, ThreadedFeature):
+            assert has_own_loop, f"{cls.key} is threaded but never implements _loop"
+            assert cls.start is ThreadedFeature.start, f"{cls.key} overrides start()"
+
+
+def test_start_all_runs_one_thread_per_loop_feature(monkeypatch):
+    registry = make_registry(monkeypatch)
+    expected = loop_feature_keys()
+    assert expected, "expected at least one background feature"
+
+    registry.start_all()
+    try:
+        time.sleep(0.2)
+        running = sorted(
+            t.name.removeprefix("camargo-")
+            for t in threading.enumerate()
+            if t.name.startswith("camargo-") and t.is_alive()
+        )
+        assert running == expected
+    finally:
+        registry.stop_all()
+
+
+def test_stop_all_joins_every_thread(monkeypatch):
+    registry = make_registry(monkeypatch)
+    registry.start_all()
+    time.sleep(0.2)
+
+    started = time.perf_counter()
+    registry.stop_all()
+    elapsed = time.perf_counter() - started
+
+    leftover = [t.name for t in threading.enumerate() if t.name.startswith("camargo-")]
+    assert leftover == []
+    # Loops sleep in 0.3-2s steps; waiting them out would take seconds.
+    assert elapsed < 1.0, f"stop_all took {elapsed:.2f}s, loops are not waking on the stop event"
+
+
+def test_start_is_idempotent(monkeypatch):
+    registry = make_registry(monkeypatch)
+    registry.start_all()
+    try:
+        registry.start_all()
+        time.sleep(0.2)
+        names = [t.name for t in threading.enumerate() if t.name.startswith("camargo-")]
+        assert len(names) == len(set(names)) == len(loop_feature_keys())
+    finally:
+        registry.stop_all()

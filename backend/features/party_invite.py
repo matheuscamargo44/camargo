@@ -1,12 +1,12 @@
 import logging
-import time
+from urllib.parse import quote
 from core.config import save_config
-from features.base import Feature
+from features.base import ThreadedFeature
 
 logger = logging.getLogger(__name__)
 
 
-class AutoPartyInvite(Feature):
+class AutoPartyInvite(ThreadedFeature):
     key = "auto_party_invite"
     title = "Auto Party Invite"
     category = "Automation"
@@ -60,7 +60,10 @@ class AutoPartyInvite(Feature):
         for name in names:
             # Check by summoner name or puuid
             try:
-                res = self.lcu.lcu_request("GET", f"/lol-summoner/v1/summoners?name={name}")
+                # Riot IDs contain spaces and '#', which would truncate the URL
+                res = self.lcu.lcu_request(
+                    "GET", f"/lol-summoner/v1/summoners?name={quote(name, safe='')}"
+                )
                 if res.status_code == 200:
                     data = res.json()
                     s_id = data.get("summonerId")
@@ -83,11 +86,11 @@ class AutoPartyInvite(Feature):
     def _loop(self):
         while not self._stop_event.is_set():
             if not self.lcu.is_league_connected():
-                time.sleep(2)
+                self._sleep(2)
                 continue
 
             if not self.enabled or not self.summoners:
-                time.sleep(2)
+                self._sleep(2)
                 continue
 
             try:
@@ -99,11 +102,11 @@ class AutoPartyInvite(Feature):
 
                     if is_leader and party_id and party_id != self.last_invited_lobby_id:
                         self.last_invited_lobby_id = party_id
-                        time.sleep(1.0)
+                        self._sleep(1.0)
                         self.invite_now()
                 else:
                     self.last_invited_lobby_id = None
             except Exception as e:
                 logger.debug(f"AutoPartyInvite loop error: {e}")
 
-            time.sleep(2)
+            self._sleep(2)

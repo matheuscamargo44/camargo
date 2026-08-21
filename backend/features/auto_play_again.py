@@ -1,12 +1,13 @@
 import logging
 import time
+
 from core.config import save_config
-from features.base import Feature
+from features.base import ThreadedFeature
 
 logger = logging.getLogger(__name__)
 
 
-class AutoPlayAgain(Feature):
+class AutoPlayAgain(ThreadedFeature):
     key = "auto_play_again"
     title = "Play Again"
     category = "Automation"
@@ -61,11 +62,11 @@ class AutoPlayAgain(Feature):
     def _loop(self):
         while not self._stop_event.is_set():
             if not self.lcu.is_league_connected():
-                time.sleep(2)
+                self._sleep(2)
                 continue
 
             if not self.config.get("auto_play_again", {}).get("enabled", False):
-                time.sleep(2)
+                self._sleep(2)
                 continue
 
             try:
@@ -76,11 +77,11 @@ class AutoPlayAgain(Feature):
                     if phase in ("EndOfGame", "WaitingForStats"):
                         if self.last_handled_phase != phase:
                             self.last_handled_phase = phase
-                            time.sleep(1.0)
+                            self._sleep(1.0)
                             play_again_res = self.lcu.lcu_request("POST", "/lol-lobby/v2/play-again")
                             if play_again_res.status_code in (200, 201, 204):
                                 self.on_event("success", "Play Again: Returned to lobby")
-                                time.sleep(1.5)
+                                self._sleep(1.5)
                                 self.start_search()
                     elif phase == "Lobby":
                         self.last_handled_phase = "Lobby"
@@ -90,4 +91,4 @@ class AutoPlayAgain(Feature):
             except Exception as e:
                 logger.debug(f"PlayAgain loop error: {e}")
 
-            time.sleep(2)
+            self._sleep(2)

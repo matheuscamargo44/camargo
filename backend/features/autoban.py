@@ -1,11 +1,8 @@
-import threading
-import time
-
 from core.config import get_automation_delay, save_config
-from features.base import Feature
+from features.base import ThreadedFeature
 
 
-class AutoBan(Feature):
+class AutoBan(ThreadedFeature):
     key = "autoban"
     title = "AutoBan"
     category = "Automation"
@@ -15,8 +12,6 @@ class AutoBan(Feature):
         self.champ_dict = {}
         self.enabled = bool(self.config.get("autoban", {}).get("enabled"))
         self.champion = self.config.get("autoban", {}).get("champion", "None")
-        self._thread = None
-        self._running = False
 
     def get_status(self) -> dict:
         return {
@@ -74,37 +69,27 @@ class AutoBan(Feature):
         self.on_event("info", f"AutoBan {'enabled' if self.enabled else 'disabled'}")
         return self.enabled
 
-    def start(self):
-        if self._running:
-            return
-        self._running = True
-        self._thread = threading.Thread(target=self._monitor_champ_select, daemon=True)
-        self._thread.start()
-
-    def stop(self):
-        self._running = False
-
-    def _monitor_champ_select(self):
-        while self._running:
+    def _loop(self):
+        while not self._stop_event.is_set():
             try:
                 if not self.enabled:
-                    time.sleep(0.5)
+                    self._sleep(0.5)
                     continue
                 if not self.lcu.is_league_connected():
-                    time.sleep(2)
+                    self._sleep(2)
                     continue
                 if not self.champ_dict:
                     self.update_champion_list()
 
                 champ_select_resp = self.lcu.lcu_request("GET", "/lol-champ-select/v1/session")
                 if "RPC_ERROR" in champ_select_resp.text:
-                    time.sleep(0.3)
+                    self._sleep(0.3)
                     continue
 
                 session = champ_select_resp.json()
                 cell_id = session.get("localPlayerCellId")
                 if cell_id is None:
-                    time.sleep(0.3)
+                    self._sleep(0.3)
                     continue
 
                 for actions in session.get("actions", []):
@@ -119,16 +104,16 @@ class AutoBan(Feature):
                         ):
                             self._ban_champion(action)
 
-                time.sleep(0.3)
+                self._sleep(0.3)
             except Exception:
-                time.sleep(1)
+                self._sleep(1)
 
     def _ban_champion(self, action):
         if self.champion == "None":
             return
         delay = get_automation_delay(self.config, "autoban", 0.3)
         if delay:
-            time.sleep(delay)
+            self._sleep(delay)
 
         champion_id = self.champ_name_to_id(self.champion)
         if champion_id == -1:

@@ -1,12 +1,11 @@
 import logging
-import time
 from core.config import save_config
-from features.base import Feature
+from features.base import ThreadedFeature
 
 logger = logging.getLogger(__name__)
 
 
-class AutoHonor(Feature):
+class AutoHonor(ThreadedFeature):
     key = "auto_honor"
     title = "Auto Honor"
     category = "Automation"
@@ -32,11 +31,11 @@ class AutoHonor(Feature):
     def _loop(self):
         while not self._stop_event.is_set():
             if not self.lcu.is_league_connected():
-                time.sleep(2)
+                self._sleep(2)
                 continue
 
             if not self.config.get("auto_honor", {}).get("enabled", False):
-                time.sleep(2)
+                self._sleep(2)
                 continue
 
             try:
@@ -64,8 +63,8 @@ class AutoHonor(Feature):
                         if honor_res.status_code in (200, 201, 204):
                             self.last_honored_game_id = game_id
                             self.on_event("success", "Auto Honor: Voted for teammate")
-                            time.sleep(2)
+                            self._sleep(2)
             except Exception as e:
                 logger.debug(f"AutoHonor error: {e}")
 
-            time.sleep(2)
+            self._sleep(2)
