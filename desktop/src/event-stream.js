@@ -1,28 +1,25 @@
 const BASE_URL = window.camargo.backendUrl;
 const WS_URL = BASE_URL.replace(/^http/, "ws") + "/ws/events";
-const MAX_EVENTS = 150;
+// The token travels as a subprotocol because browsers cannot set headers on
+// a WebSocket handshake.
+const WS_PROTOCOLS = [window.camargo.wsSubprotocol, window.camargo.authToken];
 const RECONNECT_DELAY_MS = 3000;
 
 const eventSubscribers = new Set();
-const eventBuffer = [];
 
 let ws = null;
-let shouldReconnect = true;
 
 function connect() {
   try {
-    ws = new WebSocket(WS_URL);
+    ws = new WebSocket(WS_URL, WS_PROTOCOLS);
   } catch {
     scheduleReconnect();
     return;
   }
 
-  ws.onopen = () => {};
-
   ws.onmessage = (event) => {
     try {
-      const data = JSON.parse(event.data);
-      pushEvent(data);
+      pushEvent(JSON.parse(event.data));
     } catch {
       // ignore malformed messages
     }
@@ -39,10 +36,7 @@ function connect() {
 }
 
 function scheduleReconnect() {
-  if (!shouldReconnect) return;
-  setTimeout(() => {
-    if (shouldReconnect) connect();
-  }, RECONNECT_DELAY_MS);
+  setTimeout(connect, RECONNECT_DELAY_MS);
 }
 
 function pushEvent(data) {
@@ -52,14 +46,11 @@ function pushEvent(data) {
     ts: data.ts || Date.now() / 1000,
   };
 
-  eventBuffer.push(entry);
-  if (eventBuffer.length > MAX_EVENTS) eventBuffer.shift();
-
-  for (const cb of eventSubscribers) cb(entry, eventBuffer);
+  for (const cb of eventSubscribers) cb(entry);
 }
 
 /**
- * Subscribe to incoming events. Callback receives (newEntry, allEntries).
+ * Subscribe to incoming events. Callback receives { level, message, ts }.
  * Returns an unsubscribe function.
  */
 export function onEvent(callback) {
@@ -68,24 +59,8 @@ export function onEvent(callback) {
 }
 
 /**
- * Returns the current event buffer (array of { level, message, ts }).
- */
-export function getEventBuffer() {
-  return eventBuffer;
-}
-
-/**
  * Starts the WebSocket connection. Call once at app bootstrap.
  */
 export function startEventStream() {
-  shouldReconnect = true;
   connect();
-}
-
-/**
- * Stops the WebSocket connection and prevents reconnects.
- */
-export function stopEventStream() {
-  shouldReconnect = false;
-  if (ws) ws.close();
 }
