@@ -23,10 +23,26 @@ class ProfileIcon(Feature):
                 pass
         return {"key": self.key, "icon_id": icon_id}
 
+    def get_owned_icons(self) -> list:
+        if not self.lcu.is_league_connected():
+            return list(range(29))
+
+        owned = set(range(29))  # Default starter icons (0-28)
+        try:
+            res = self.lcu.lcu_request("GET", "/lol-inventory/v2/inventory/SUMMONER_ICON")
+            if res.status_code == 200:
+                for item in res.json():
+                    item_id = item.get("itemId")
+                    if item_id is not None:
+                        owned.add(int(item_id))
+        except Exception:
+            pass
+        return sorted(owned)
+
     def change(self, icon_id):
         icon_id = int(icon_id)
-        if icon_id < 1:
-            raise ValueError("Icon ID must be a positive number")
+        if icon_id < 0:
+            raise ValueError("Icon ID must be a non-negative number")
 
         response = self.lcu.lcu_request(
             "PUT", "/lol-summoner/v1/current-summoner/icon", {"profileIconId": icon_id}
@@ -55,8 +71,8 @@ class ClientIcon(Feature):
 
     def change(self, icon_id):
         icon_id = int(icon_id)
-        if icon_id < 1:
-            raise ValueError("Icon ID must be a positive number")
+        if icon_id < 0:
+            raise ValueError("Icon ID must be a non-negative number")
 
         response = self.lcu.lcu_request("PUT", "/lol-chat/v1/me", {"icon": icon_id})
         if response.status_code not in (200, 201):

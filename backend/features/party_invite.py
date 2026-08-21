@@ -41,8 +41,30 @@ class AutoPartyInvite(ThreadedFeature):
         self.summoners = summoners.strip()
         self.enabled = bool(self.summoners)
         self._save_settings()
-        self.on_event("success", f"Party invite list updated")
+        self.on_event("success", "Party invite list updated")
         return self.summoners
+
+    def _get_friends_lookup(self):
+        lookup = {}
+        try:
+            res = self.lcu.lcu_request("GET", "/lol-chat/v1/friends")
+            if res.status_code == 200:
+                for f in res.json():
+                    g_name = f.get("gameName", "")
+                    g_tag = f.get("gameTag", "")
+                    name = f.get("name", "")
+                    s_id = f.get("summonerId")
+                    puuid = f.get("puuid")
+
+                    if g_name and g_tag:
+                        lookup[f"{g_name}#{g_tag}".lower()] = (s_id, puuid)
+                    if g_name:
+                        lookup[g_name.lower()] = (s_id, puuid)
+                    if name:
+                        lookup[name.lower()] = (s_id, puuid)
+        except Exception:
+            pass
+        return lookup
 
     def invite_now(self):
         if not self.lcu.is_league_connected():
@@ -55,10 +77,21 @@ class AutoPartyInvite(ThreadedFeature):
         if not names:
             raise ValueError("No valid summoner names found")
 
-        # Resolve summoner IDs
+        friends_map = self._get_friends_lookup()
         invitations = []
+
         for name in names:
-            # Check by summoner name or puuid
+            name_lower = name.lower()
+            if name_lower in friends_map:
+                s_id, puuid = friends_map[name_lower]
+                if s_id:
+                    invitations.append({"toSummonerId": s_id})
+                elif puuid:
+                    invitations.append({"toPuuid": puuid})
+                continue
+
+            # If not found in friends, try resolving by summoner API
+            resolved = False
             try:
                 # Riot IDs contain spaces and '#', which would truncate the URL
                 res = self.lcu.lcu_request(
@@ -67,14 +100,18 @@ class AutoPartyInvite(ThreadedFeature):
                 if res.status_code == 200:
                     data = res.json()
                     s_id = data.get("summonerId")
+                    puuid = data.get("puuid")
                     if s_id:
                         invitations.append({"toSummonerId": s_id})
+                        resolved = True
+                    elif puuid:
+                        invitations.append({"toPuuid": puuid})
+                        resolved = True
             except Exception:
                 pass
 
-        if not invitations:
-            # Fallback to direct invitation format
-            invitations = [{"toSummonerName": n} for n in names]
+            if not resolved:
+                invitations.append({"toSummonerName": name})
 
         res = self.lcu.lcu_request("POST", "/lol-lobby/v2/lobby/invitations", invitations)
         if res.status_code not in (200, 201, 204):
