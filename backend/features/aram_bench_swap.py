@@ -1,12 +1,11 @@
 import logging
-import time
 from core.config import save_config
-from features.base import Feature
+from features.base import ThreadedFeature
 
 logger = logging.getLogger(__name__)
 
 
-class AramBenchSwap(Feature):
+class AramBenchSwap(ThreadedFeature):
     key = "aram_bench_swap"
     title = "ARAM Bench Sniper"
     category = "Automation"
@@ -74,17 +73,17 @@ class AramBenchSwap(Feature):
     def _loop(self):
         while not self._stop_event.is_set():
             if not self.lcu.is_league_connected():
-                time.sleep(1)
+                self._sleep(1)
                 continue
 
             if not self.enabled or self.target_champion == "None":
-                time.sleep(1)
+                self._sleep(1)
                 continue
 
             try:
                 target_id = self.champ_name_to_id(self.target_champion)
                 if target_id == -1:
-                    time.sleep(1)
+                    self._sleep(1)
                     continue
 
                 session_res = self.lcu.lcu_request("GET", "/lol-champ-select/v1/session")
@@ -102,9 +101,9 @@ class AramBenchSwap(Feature):
                             )
                             if swap_res.status_code in (200, 201, 204):
                                 self.on_event("success", f"ARAM Bench Sniper: Swapped to {self.target_champion}!")
-                                time.sleep(2.0)
+                                self._sleep(2.0)
                             break
             except Exception as e:
                 logger.debug(f"AramBenchSwap error: {e}")
 
-            time.sleep(0.5)
+            self._sleep(0.5)

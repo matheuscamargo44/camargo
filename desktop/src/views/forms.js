@@ -1,9 +1,3 @@
-const BADGE_MODE_OPTIONS = [
-  { value: "empty", label: "Empty" },
-  { value: "copy", label: "Copy Highest Badge" },
-  { value: "glitched", label: "Glitched (Manual ID)" },
-];
-
 const AVAILABILITY_OPTIONS = [
   { value: "mobile", label: "Mobile (League+ Icon)" },
   { value: "chat", label: "Online" },
@@ -44,10 +38,6 @@ export const FEATURE_TOGGLES = {
   chat_toggle: [{ field: "disconnected", label: "Chat Connected", action: null, invert: true }],
   instalock: [{ field: "enabled", label: "Enabled", action: null }],
   autoban: [{ field: "enabled", label: "Enabled", action: null }],
-  instalock_autoban: [
-    { field: "instalock_enabled", label: "Instalock", action: "toggle_instalock" },
-    { field: "autoban_enabled", label: "AutoBan", action: "toggle_auto_ban" },
-  ],
 };
 
 // Declarative config: each feature key maps to a list of actions
@@ -70,26 +60,6 @@ export const FEATURE_ACTIONS = {
       kind: "champion-picker",
       pickerTitle: "Select Champion for AutoBan",
       modalTitle: "Set AutoBan Champion",
-      allowNone: true,
-      paramName: "champion_name",
-    },
-  ],
-  instalock_autoban: [
-    {
-      label: "Set Instalock",
-      action: "set_instalock_champion",
-      kind: "champion-picker",
-      pickerTitle: "Select Champion for Instalock",
-      modalTitle: "Set Instalock",
-      allowNone: true,
-      paramName: "champion_name",
-    },
-    {
-      label: "Set AutoBan",
-      action: "set_auto_ban_champion",
-      kind: "champion-picker",
-      pickerTitle: "Select Champion for AutoBan",
-      modalTitle: "Set AutoBan",
       allowNone: true,
       paramName: "champion_name",
     },
@@ -169,7 +139,7 @@ export const FEATURE_ACTIONS = {
     {
       label: "Disenchant (All)",
       action: "disenchant_all",
-      modalTitle: "Disenchant All Loot Shards (Champions, Skins, Wards)",
+      modalTitle: "Disenchant All Shards (Champions, Wards, Statstones)",
       confirmOnly: true,
     },
   ],

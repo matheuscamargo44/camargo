@@ -1,6 +1,9 @@
 """Registers the available features. Adding a new module means adding it here
 and nothing else needs to change in the API or the client.
 """
+import logging
+from concurrent.futures import ThreadPoolExecutor
+
 from core.config import load_config
 from core.lcu_client import LCUClient
 from features.aram_bench_swap import AramBenchSwap
@@ -51,6 +54,9 @@ FEATURE_CLASSES = [
 ]
 
 
+logger = logging.getLogger(__name__)
+
+
 class FeatureRegistry:
     def __init__(self, on_event=None):
         self.lcu = LCUClient()
@@ -59,6 +65,11 @@ class FeatureRegistry:
         self.features = {
             cls.key: cls(self.lcu, self.config, self.on_event) for cls in FEATURE_CLASSES
         }
+        # Nine of these statuses each make their own blocking call to the
+        # client; done in series they add up to most of a /features response.
+        self._status_pool = ThreadPoolExecutor(
+            max_workers=8, thread_name_prefix="camargo-status"
+        )
 
     def get(self, key):
         feature = self.features.get(key)
@@ -73,6 +84,17 @@ class FeatureRegistry:
     def stop_all(self):
         for feature in self.features.values():
             feature.stop()
+        self._status_pool.shutdown(wait=False)
+
+    def _safe_status(self, feature):
+        try:
+            return feature.get_status()
+        except Exception:
+            # One misbehaving feature must not take the whole status call down
+            logger.exception("get_status failed for '%s'", feature.key)
+            return {"key": feature.key}
 
     def status(self):
-        return {key: feature.get_status() for key, feature in self.features.items()}
+        features = list(self.features.values())
+        results = self._status_pool.map(self._safe_status, features)
+        return {feature.key: status for feature, status in zip(features, results)}

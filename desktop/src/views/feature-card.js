@@ -18,7 +18,7 @@ const FEATURE_DESCRIPTIONS = {
   random_skin: "Equips random owned skin on champion lock",
   practice_tool: "Custom 5v5 practice match with bots",
   dodge: "Leaves champion select immediately",
-  chat: "Deceive mode (appear offline to friends)",
+  chat_toggle: "Deceive mode (appear offline to friends)",
   restart_ux: "Reloads client interface without restarting",
   remove_friends: "Deletes all friends from account",
   status_message: "Custom status message on chat profile",
@@ -158,12 +158,16 @@ export function buildFeatureCard(meta, initialStatus) {
   }
 
   applyLeagueState(isLeagueConnected());
-  onHealthUpdate((health) => {
+  // Kept so the screen can unsubscribe on teardown: the router throws the DOM
+  // away on every route change, and a leaked listener would keep a detached
+  // card alive and re-rendered on every poll.
+  const unsubscribeHealth = onHealthUpdate((health) => {
     applyLeagueState(Boolean(health?.league_connected));
   });
 
   return {
     cardEl: rowEl,
+    dispose: unsubscribeHealth,
     updateStatus: (status) => {
       renderStatus(status);
       for (const { field, invert, button } of toggleButtons) {
@@ -189,8 +193,8 @@ function buildToggleControl(key, toggleDef, initialStatus, showLabel = false) {
         await toggleFeature(key);
       }
       await refreshNow();
-    } catch {
-      // Ignore
+    } catch (error) {
+      console.error(`toggle ${key} failed:`, error);
     } finally {
       button.disabled = !isLeagueConnected();
     }
@@ -207,161 +211,90 @@ function buildToggleControl(key, toggleDef, initialStatus, showLabel = false) {
   return { element: button, button };
 }
 
-function buildActionControl(key, actionDef) {
-  if (actionDef.kind === "champion-picker") {
-    return actionButton(
-      actionDef.label,
-      async () => {
-        if (!isLeagueConnected()) return;
-        const champName = await openChampionPicker({
-          title: actionDef.pickerTitle || actionDef.label,
-          allowNone: actionDef.allowNone !== false,
-        });
-        if (champName === null) return;
-        try {
-          await callAction(key, actionDef.action, { [actionDef.paramName || "champion_name"]: champName });
-          await refreshNow();
-        } catch {
-          // Ignore
-        }
-      },
-      "secondary"
-    );
-  }
+/**
+ * Every action follows the same shape: optionally collect input in a modal,
+ * call the backend, refresh. Only the "collect input" step differs, so each
+ * kind just provides the params (or null to cancel).
+ */
+const PARAM_COLLECTORS = {
+  "champion-picker": async (actionDef) => {
+    const champName = await openChampionPicker({
+      title: actionDef.pickerTitle || actionDef.label,
+      allowNone: actionDef.allowNone !== false,
+    });
+    return champName === null ? null : { [actionDef.paramName || "champion_name"]: champName };
+  },
+  "skin-picker": async (actionDef) => {
+    const skinId = await openSkinPicker({ title: actionDef.modalTitle || "Choose Background" });
+    return skinId === null ? null : { skin_id: skinId };
+  },
+  "icon-picker": async (actionDef) => {
+    const iconId = await openIconPicker({ kind: actionDef.iconKind });
+    return iconId === null ? null : { icon_id: iconId };
+  },
+  "badge-picker": (actionDef) => openBadgePicker({ title: actionDef.modalTitle || "Change Badges" }),
+  "title-picker": (actionDef) =>
+    openTitlePicker({ title: actionDef.modalTitle || "Choose Challenge Title" }),
+};
 
-  if (actionDef.kind === "skin-picker") {
-    return actionButton(
-      actionDef.label,
-      async () => {
-        if (!isLeagueConnected()) return;
-        const skinId = await openSkinPicker({ title: actionDef.modalTitle || "Choose Background" });
-        if (skinId === null) return;
-        try {
-          await callAction(key, actionDef.action, { skin_id: skinId });
-          await refreshNow();
-        } catch {
-          // Ignore
-        }
-      },
-      "secondary"
-    );
-  }
-
-  if (actionDef.kind === "icon-picker") {
-    return actionButton(
-      actionDef.label,
-      async () => {
-        if (!isLeagueConnected()) return;
-        const iconId = await openIconPicker({ kind: actionDef.iconKind });
-        if (iconId === null) return;
-        try {
-          await callAction(key, actionDef.action, { icon_id: iconId });
-          await refreshNow();
-        } catch {
-          // Ignore
-        }
-      },
-      "secondary"
-    );
-  }
-
-  if (actionDef.kind === "badge-picker") {
-    return actionButton(
-      actionDef.label,
-      async () => {
-        if (!isLeagueConnected()) return;
-        const result = await openBadgePicker({ title: actionDef.modalTitle || "Change Badges" });
-        if (result === null) return;
-        try {
-          await callAction(key, actionDef.action, result);
-          await refreshNow();
-        } catch {
-          // Ignore
-        }
-      },
-      "secondary"
-    );
-  }
-
-  if (actionDef.kind === "title-picker") {
-    return actionButton(
-      actionDef.label,
-      async () => {
-        if (!isLeagueConnected()) return;
-        const result = await openTitlePicker({ title: actionDef.modalTitle || "Choose Challenge Title" });
-        if (result === null) return;
-        try {
-          await callAction(key, actionDef.action, result);
-          await refreshNow();
-        } catch {
-          // Ignore
-        }
-      },
-      "secondary"
-    );
-  }
+async function collectParams(actionDef) {
+  const collector = PARAM_COLLECTORS[actionDef.kind];
+  if (collector) return collector(actionDef);
 
   if (actionDef.confirmOnly) {
-    const variant = actionDef.variant || "secondary";
-    return actionButton(
-      actionDef.label,
-      async () => {
-        if (!isLeagueConnected()) return;
-        const title = actionDef.modalTitle || actionDef.label;
-        const confirmed = await openConfirmModal({
-          title,
-          description: actionDef.description || "Are you sure you want to proceed?",
-          confirmLabel: title,
-        });
-        if (!confirmed) return;
-        try {
-          const result = await callAction(key, actionDef.action, {});
-          if (actionDef.opensUrl && result.result) window.open(result.result, "_blank");
-          await refreshNow();
-        } catch {
-          // Ignore
-        }
-      },
-      variant
-    );
+    const title = actionDef.modalTitle || actionDef.label;
+    const confirmed = await openConfirmModal({
+      title,
+      description: actionDef.description || "Are you sure you want to proceed?",
+      confirmLabel: title,
+    });
+    return confirmed ? {} : null;
   }
 
   if (actionDef.fields && actionDef.fields.length > 0) {
-    return actionButton(
-      actionDef.label,
-      async () => {
-        if (!isLeagueConnected()) return;
-        const title = actionDef.modalTitle || actionDef.label;
-        const values = await openFormModal({
-          title,
-          fields: actionDef.fields,
-          submitLabel: actionDef.label,
-        });
-        if (!values) return;
-        try {
-          await callAction(key, actionDef.action, values);
-          await refreshNow();
-        } catch {
-          // Ignore
-        }
-      },
-      "secondary"
-    );
+    const values = await openFormModal({
+      title: actionDef.modalTitle || actionDef.label,
+      fields: actionDef.fields,
+      submitLabel: actionDef.label,
+    });
+    return values || null;
   }
 
-  return actionButton(
-    actionDef.label,
-    async () => {
-      if (!isLeagueConnected()) return;
-      try {
-        const result = await callAction(key, actionDef.action, {});
-        if (actionDef.opensUrl && result.result) window.open(result.result, "_blank");
-        await refreshNow();
-      } catch {
-        // Ignore
-      }
-    },
-    actionDef.quiet ? "secondary" : "primary"
-  );
+  return {};
 }
 
+function actionTone(actionDef) {
+  if (actionDef.confirmOnly) return actionDef.variant || "secondary";
+  if (actionDef.kind || (actionDef.fields && actionDef.fields.length > 0)) return "secondary";
+  return actionDef.quiet ? "secondary" : "primary";
+}
+
+function buildActionControl(key, actionDef) {
+  const button = actionButton(
+    actionDef.label,
+    async () => {
+      if (!isLeagueConnected() || button.disabled) return;
+
+      // Bulk actions (disenchanting, mass invites) can run for a while; keep
+      // the button from firing twice and show that something is happening.
+      button.disabled = true;
+      button.classList.add("btn-busy");
+      try {
+        const params = await collectParams(actionDef);
+        if (params === null) return;
+
+        const result = await callAction(key, actionDef.action, params);
+        if (actionDef.opensUrl && result.result) window.open(result.result, "_blank");
+        await refreshNow();
+      } catch (error) {
+        console.error(`${actionDef.action} on ${key} failed:`, error);
+      } finally {
+        button.classList.remove("btn-busy");
+        button.disabled = !isLeagueConnected();
+      }
+    },
+    actionTone(actionDef)
+  );
+
+  return button;
+}

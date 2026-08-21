@@ -1,59 +1,6 @@
 import { el } from "./components.js";
+import { getSkinList } from "./ddragon.js";
 import { openOverlay, closeModal } from "./modal.js";
-
-const SKINS_URL =
-  "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/skins.json";
-
-function getSkinImgUrl(skinData) {
-  const rawPath =
-    skinData.tilePath ||
-    skinData.splashPath ||
-    skinData.loadScreenPath ||
-    skinData.uncenteredSplashPath;
-  if (!rawPath) return "";
-  const cleanPath = rawPath.replace(/^\/lol-game-data\/assets\//i, "").toLowerCase();
-  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/${cleanPath}`;
-}
-
-let cachedSkins = null;
-
-async function loadSkins() {
-  if (cachedSkins) return cachedSkins;
-
-  const data = await fetch(SKINS_URL).then((r) => r.json());
-  const skins = [];
-
-  for (const [skinId, skinData] of Object.entries(data)) {
-    const idNum = Number(skinId);
-    if (!idNum || idNum < 1000) continue;
-
-    const loadScreenPath = skinData.loadScreenPath || "";
-    const marker = "ASSETS/Characters/";
-    const markerStart = loadScreenPath.indexOf(marker);
-    let championName = "";
-    if (markerStart !== -1) {
-      const nameStart = markerStart + marker.length;
-      const nameEnd = loadScreenPath.indexOf("/", nameStart);
-      championName = loadScreenPath.substring(nameStart, nameEnd);
-    }
-
-    const name = skinData.isBase ? "Default" : skinData.name || "Default";
-    skins.push({
-      id: idNum,
-      name,
-      champion: championName || "",
-      imgUrl: getSkinImgUrl(skinData),
-    });
-  }
-
-  skins.sort((a, b) => {
-    const cmp = a.champion.localeCompare(b.champion);
-    return cmp !== 0 ? cmp : a.id - b.id;
-  });
-
-  cachedSkins = skins;
-  return cachedSkins;
-}
 
 const PAGE_SIZE = 60;
 
@@ -169,7 +116,7 @@ export function openSkinPicker({ title = "Choose Profile Background" } = {}) {
 
     overlay.appendChild(box);
 
-    loadSkins()
+    getSkinList()
       .then((skins) => {
         const scroller = setupInfiniteSkinGrid(grid, finish);
         scroller.reset(skins);

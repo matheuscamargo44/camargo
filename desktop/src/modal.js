@@ -1,5 +1,7 @@
 let overlayEl = null;
 let closeCallback = null;
+//: a close still playing its exit animation, kept so a new modal can settle it
+let pendingClose = null;
 
 function ensureOverlay() {
   if (overlayEl) return overlayEl;
@@ -48,6 +50,9 @@ function onKeyDown(event) {
  */
 export function openOverlay(onClose) {
   const overlay = ensureOverlay();
+  // Settle a close that is still animating: otherwise its pending timer and
+  // transitionend listener would tear down the modal we are about to show.
+  if (pendingClose) pendingClose();
   overlay.innerHTML = "";
   overlay.hidden = false;
   closeCallback = onClose || null;
@@ -69,7 +74,12 @@ export function closeModal() {
   const cb = closeCallback;
   closeCallback = null;
 
+  let settled = false;
   const onEnd = () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(fallbackTimer);
+    pendingClose = null;
     overlayEl.removeEventListener("transitionend", onEnd);
     overlayEl.hidden = true;
     overlayEl.innerHTML = "";
@@ -80,7 +90,8 @@ export function closeModal() {
   overlayEl.addEventListener("transitionend", onEnd);
 
   // Fallback in case transitionend doesn't fire
-  setTimeout(onEnd, 400);
+  const fallbackTimer = setTimeout(onEnd, 400);
+  pendingClose = onEnd;
 }
 
 function buildField(field) {

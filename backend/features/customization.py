@@ -2,15 +2,9 @@
 badges, Riot ID and status message. Grouped in one module since each is a
 single LCU call with no monitoring loop, unlike the automation features.
 """
-import requests
-
 from features.base import Feature
 
 BADGE_MODES = {"empty", "copy", "glitched"}
-SKINS_URL = (
-    "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/"
-    "global/default/v1/skins.json"
-)
 
 
 class ProfileIcon(Feature):
@@ -29,10 +23,26 @@ class ProfileIcon(Feature):
                 pass
         return {"key": self.key, "icon_id": icon_id}
 
+    def get_owned_icons(self) -> list:
+        if not self.lcu.is_league_connected():
+            return list(range(29))
+
+        owned = set(range(29))  # Default starter icons (0-28)
+        try:
+            res = self.lcu.lcu_request("GET", "/lol-inventory/v2/inventory/SUMMONER_ICON")
+            if res.status_code == 200:
+                for item in res.json():
+                    item_id = item.get("itemId")
+                    if item_id is not None:
+                        owned.add(int(item_id))
+        except Exception:
+            pass
+        return sorted(owned)
+
     def change(self, icon_id):
         icon_id = int(icon_id)
-        if icon_id < 1:
-            raise ValueError("Icon ID must be a positive number")
+        if icon_id < 0:
+            raise ValueError("Icon ID must be a non-negative number")
 
         response = self.lcu.lcu_request(
             "PUT", "/lol-summoner/v1/current-summoner/icon", {"profileIconId": icon_id}
@@ -61,8 +71,8 @@ class ClientIcon(Feature):
 
     def change(self, icon_id):
         icon_id = int(icon_id)
-        if icon_id < 1:
-            raise ValueError("Icon ID must be a positive number")
+        if icon_id < 0:
+            raise ValueError("Icon ID must be a non-negative number")
 
         response = self.lcu.lcu_request("PUT", "/lol-chat/v1/me", {"icon": icon_id})
         if response.status_code not in (200, 201):
@@ -86,46 +96,6 @@ class Background(Feature):
             except Exception:
                 pass
         return {"key": self.key, "skin_id": skin_id}
-
-    @staticmethod
-    def fetch_all_champion_skins():
-        response = requests.get(SKINS_URL, timeout=10)
-        if response.status_code != 200:
-            raise RuntimeError(f"Could not fetch skins (HTTP {response.status_code})")
-
-        skins = []
-        for skin_id, skin_data in response.json().items():
-            load_screen_path = skin_data.get("loadScreenPath", "")
-            marker = "ASSETS/Characters/"
-            marker_start = load_screen_path.find(marker)
-            if marker_start == -1:
-                champion_name = "Unknown"
-            else:
-                name_start = marker_start + len(marker)
-                name_end = load_screen_path.find("/", name_start)
-                champion_name = load_screen_path[name_start:name_end]
-
-            if skin_data.get("questSkinInfo"):
-                for tier in skin_data["questSkinInfo"].get("tiers", []):
-                    skins.append(
-                        {"id": str(tier.get("id", "")), "name": tier.get("name", ""), "champion": champion_name}
-                    )
-            else:
-                skins.append(
-                    {
-                        "id": str(skin_id),
-                        "name": "Default" if skin_data.get("isBase") else skin_data.get("name", ""),
-                        "champion": champion_name,
-                    }
-                )
-        return skins
-
-    @staticmethod
-    def search_skins_by_name(skins, search_query):
-        query = search_query.strip().lower()
-        if not query:
-            return []
-        return [s for s in skins if query in s["champion"].lower() or query in s["name"].lower()]
 
     def change(self, skin_id):
         skin_id = int(skin_id)

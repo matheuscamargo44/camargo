@@ -1,12 +1,12 @@
 import logging
-import time
+from urllib.parse import quote
 from core.config import save_config
-from features.base import Feature
+from features.base import ThreadedFeature
 
 logger = logging.getLogger(__name__)
 
 
-class AutoPartyInvite(Feature):
+class AutoPartyInvite(ThreadedFeature):
     key = "auto_party_invite"
     title = "Auto Party Invite"
     category = "Automation"
@@ -41,8 +41,30 @@ class AutoPartyInvite(Feature):
         self.summoners = summoners.strip()
         self.enabled = bool(self.summoners)
         self._save_settings()
-        self.on_event("success", f"Party invite list updated")
+        self.on_event("success", "Party invite list updated")
         return self.summoners
+
+    def _get_friends_lookup(self):
+        lookup = {}
+        try:
+            res = self.lcu.lcu_request("GET", "/lol-chat/v1/friends")
+            if res.status_code == 200:
+                for f in res.json():
+                    g_name = f.get("gameName", "")
+                    g_tag = f.get("gameTag", "")
+                    name = f.get("name", "")
+                    s_id = f.get("summonerId")
+                    puuid = f.get("puuid")
+
+                    if g_name and g_tag:
+                        lookup[f"{g_name}#{g_tag}".lower()] = (s_id, puuid)
+                    if g_name:
+                        lookup[g_name.lower()] = (s_id, puuid)
+                    if name:
+                        lookup[name.lower()] = (s_id, puuid)
+        except Exception:
+            pass
+        return lookup
 
     def invite_now(self):
         if not self.lcu.is_league_connected():
@@ -55,23 +77,41 @@ class AutoPartyInvite(Feature):
         if not names:
             raise ValueError("No valid summoner names found")
 
-        # Resolve summoner IDs
+        friends_map = self._get_friends_lookup()
         invitations = []
+
         for name in names:
-            # Check by summoner name or puuid
+            name_lower = name.lower()
+            if name_lower in friends_map:
+                s_id, puuid = friends_map[name_lower]
+                if s_id:
+                    invitations.append({"toSummonerId": s_id})
+                elif puuid:
+                    invitations.append({"toPuuid": puuid})
+                continue
+
+            # If not found in friends, try resolving by summoner API
+            resolved = False
             try:
-                res = self.lcu.lcu_request("GET", f"/lol-summoner/v1/summoners?name={name}")
+                # Riot IDs contain spaces and '#', which would truncate the URL
+                res = self.lcu.lcu_request(
+                    "GET", f"/lol-summoner/v1/summoners?name={quote(name, safe='')}"
+                )
                 if res.status_code == 200:
                     data = res.json()
                     s_id = data.get("summonerId")
+                    puuid = data.get("puuid")
                     if s_id:
                         invitations.append({"toSummonerId": s_id})
+                        resolved = True
+                    elif puuid:
+                        invitations.append({"toPuuid": puuid})
+                        resolved = True
             except Exception:
                 pass
 
-        if not invitations:
-            # Fallback to direct invitation format
-            invitations = [{"toSummonerName": n} for n in names]
+            if not resolved:
+                invitations.append({"toSummonerName": name})
 
         res = self.lcu.lcu_request("POST", "/lol-lobby/v2/lobby/invitations", invitations)
         if res.status_code not in (200, 201, 204):
@@ -83,11 +123,11 @@ class AutoPartyInvite(Feature):
     def _loop(self):
         while not self._stop_event.is_set():
             if not self.lcu.is_league_connected():
-                time.sleep(2)
+                self._sleep(2)
                 continue
 
             if not self.enabled or not self.summoners:
-                time.sleep(2)
+                self._sleep(2)
                 continue
 
             try:
@@ -99,11 +139,11 @@ class AutoPartyInvite(Feature):
 
                     if is_leader and party_id and party_id != self.last_invited_lobby_id:
                         self.last_invited_lobby_id = party_id
-                        time.sleep(1.0)
+                        self._sleep(1.0)
                         self.invite_now()
                 else:
                     self.last_invited_lobby_id = None
             except Exception as e:
                 logger.debug(f"AutoPartyInvite loop error: {e}")
 
-            time.sleep(2)
+            self._sleep(2)

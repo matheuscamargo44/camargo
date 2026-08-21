@@ -1,13 +1,12 @@
 import logging
 import random
-import time
 from core.config import save_config
-from features.base import Feature
+from features.base import ThreadedFeature
 
 logger = logging.getLogger(__name__)
 
 
-class RandomSkinPicker(Feature):
+class RandomSkinPicker(ThreadedFeature):
     key = "random_skin"
     title = "Random Skin Picker"
     category = "Automation"
@@ -34,11 +33,11 @@ class RandomSkinPicker(Feature):
     def _loop(self):
         while not self._stop_event.is_set():
             if not self.lcu.is_league_connected():
-                time.sleep(2)
+                self._sleep(2)
                 continue
 
             if not self.enabled:
-                time.sleep(2)
+                self._sleep(2)
                 continue
 
             try:
@@ -80,10 +79,10 @@ class RandomSkinPicker(Feature):
                                     if patch_res.status_code in (200, 201, 204):
                                         self.last_randomized_session = game_id
                                         self.on_event("success", f"Random Skin Picker: Selected skin ID {chosen_skin_id}")
-                                        time.sleep(2.0)
+                                        self._sleep(2.0)
                 else:
                     self.last_randomized_session = None
             except Exception as e:
                 logger.debug(f"RandomSkinPicker error: {e}")
 
-            time.sleep(1.0)
+            self._sleep(1.0)
