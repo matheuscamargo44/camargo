@@ -1,4 +1,4 @@
-import { callAction, toggleFeature } from "../api.js";
+import { callAction, reportClientError, toggleFeature } from "../api.js";
 import { openBadgePicker } from "../badge-picker.js";
 import { openChampionPicker } from "../champion-picker.js";
 import { actionButton, el, toggleSwitch } from "../components.js";
@@ -195,6 +195,7 @@ function buildToggleControl(key, toggleDef, initialStatus, showLabel = false) {
       await refreshNow();
     } catch (error) {
       console.error(`toggle ${key} failed:`, error);
+      reportClientError(`Toggling ${key} failed: ${error.message}`, error.stack, "toggle");
     } finally {
       button.disabled = !isLeagueConnected();
     }
@@ -288,6 +289,11 @@ function buildActionControl(key, actionDef) {
         await refreshNow();
       } catch (error) {
         console.error(`${actionDef.action} on ${key} failed:`, error);
+        reportClientError(
+          `Action ${actionDef.action} on ${key} failed: ${error.message}`,
+          error.stack,
+          "action"
+        );
       } finally {
         button.classList.remove("btn-busy");
         button.disabled = !isLeagueConnected();

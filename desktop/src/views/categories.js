@@ -2,6 +2,7 @@ export const NAV_ITEMS = [
   { route: "/automation", label: "Automation" },
   { route: "/customization", label: "Customization" },
   { route: "/social", label: "Social" },
+  { route: "/logs", label: "Logs" },
 ];
 
 export const CATEGORY_LABELS = {

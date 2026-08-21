@@ -47,3 +47,29 @@ export async function callAction(key, actionName, params = {}) {
   }
   return data;
 }
+
+export async function fetchLogs(after = 0) {
+  const response = await fetch(`${BASE_URL}/logs?after=${after}`, { headers: AUTH_HEADERS });
+  if (!response.ok) throw new Error(`Failed to load logs (HTTP ${response.status})`);
+  return response.json();
+}
+
+export async function clearLogs() {
+  const response = await fetch(`${BASE_URL}/logs`, { method: "DELETE", headers: AUTH_HEADERS });
+  if (!response.ok) throw new Error(`Failed to clear logs (HTTP ${response.status})`);
+  return response.json();
+}
+
+/**
+ * Forwards a renderer-side failure to the backend log, so one copy of the
+ * activity log covers both processes.
+ */
+export function reportClientError(message, detail, source = "renderer") {
+  return fetch(`${BASE_URL}/logs/client`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ level: "ERROR", message: String(message), detail, source }),
+  }).catch(() => {
+    // The backend being unreachable is itself the failure being reported.
+  });
+}

@@ -1015,3 +1015,108 @@ main#view-root.view-enter {
   opacity: 0.6;
   cursor: progress;
 }
+
+/* ── Logs ───────────────────────────────────────────────────────── */
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.log-filters { display: flex; gap: 4px; }
+
+.log-filter {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.log-filter:hover { color: var(--text); }
+.log-filter.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.log-status { font-size: 11.5px; color: var(--text-muted); }
+.log-actions { display: flex; gap: 6px; margin-left: auto; }
+
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 6px;
+}
+
+.log-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border-left: 2px solid transparent;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.log-entry:hover { background: var(--surface-hover); }
+
+.log-warning { border-left-color: var(--warning); }
+.log-error,
+.log-critical { border-left-color: var(--danger); }
+
+.log-meta { display: flex; align-items: center; gap: 8px; }
+
+.log-time,
+.log-source {
+  color: var(--text-muted);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10.5px;
+}
+
+.log-level {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.log-level-warning { color: var(--warning); }
+.log-level-error,
+.log-level-critical { color: var(--danger); }
+.log-level-info { color: var(--accent); }
+
+.log-repeat {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-raised);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.log-message { color: var(--text); overflow-wrap: anywhere; }
+
+.log-detail {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  background: var(--bg);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 220px;
+}

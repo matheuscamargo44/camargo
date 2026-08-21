@@ -1,3 +1,4 @@
+import { reportClientError } from "../api.js";
 import { el } from "../components.js";
 import { mountLeagueStatus } from "../league-status.js";
 import { registerRoute, startRouter } from "../router.js";
@@ -5,6 +6,7 @@ import { startPolling } from "../state.js";
 import { renderAutomationView } from "./automation.js";
 import { NAV_ITEMS } from "./categories.js";
 import { renderCustomizationView } from "./customization.js";
+import { renderLogsView } from "./logs.js";
 import { renderSocialView } from "./social.js";
 
 const navRoot = document.getElementById("nav-links");
@@ -30,7 +32,33 @@ function hideLoadingScreen() {
   setTimeout(() => { if (loadingScreen.parentNode) loadingScreen.remove(); }, 600);
 }
 
+/**
+ * Anything that blows up in the renderer goes to the same activity log as the
+ * backend, so one copy covers both sides.
+ */
+function captureRendererErrors() {
+  window.addEventListener("error", (event) => {
+    const error = event.error;
+    reportClientError(
+      error?.message || event.message || "Unknown renderer error",
+      error?.stack || `${event.filename}:${event.lineno}:${event.colno}`,
+      "window"
+    );
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason;
+    reportClientError(
+      reason?.message || String(reason),
+      reason?.stack,
+      "promise"
+    );
+  });
+}
+
+
 async function bootstrap() {
+  captureRendererErrors();
   await startPolling();
 
   // Reveal the UI
@@ -43,6 +71,7 @@ async function bootstrap() {
   registerRoute("/automation", renderAutomationView);
   registerRoute("/customization", renderCustomizationView);
   registerRoute("/social", renderSocialView);
+  registerRoute("/logs", renderLogsView);
   startRouter(viewRoot, navRoot);
 }
 

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, clipboard } = require("electron");
 const path = require("path");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
@@ -172,6 +172,16 @@ function createTray() {
 // Synchronous so the preload can expose the token before the first fetch runs
 ipcMain.on("camargo:get-auth-token", (event) => {
   event.returnValue = AUTH_TOKEN;
+});
+
+ipcMain.on("camargo:get-version", (event) => {
+  event.returnValue = app.getVersion();
+});
+
+// The Logs tab hands the user a block of text to paste elsewhere.
+ipcMain.handle("camargo:copy-text", (_event, text) => {
+  clipboard.writeText(String(text ?? ""));
+  return true;
 });
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
