@@ -284,3 +284,60 @@ def test_a_rejected_lock_raises(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="500"):
         feature._lock_champion({"id": 11}, "Garen")
+
+
+def test_get_available_queues_filters_to_visible_queues(tmp_path, monkeypatch):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    lcu = FakeLCUClient(
+        responses={
+            "/lol-game-queues/v1/queues": FakeResponse(
+                json_data=[
+                    {"id": 420, "name": "Ranked Solo/Duo", "isRanked": True, "isVisible": True},
+                    {"id": 450, "name": "ARAM", "isRanked": False, "isVisible": True},
+                    {"id": -1, "name": "Custom", "isRanked": False, "isVisible": True},
+                    {"id": 3150, "name": "Hidden URF", "isRanked": False, "isVisible": False},
+                ]
+            )
+        }
+    )
+    feature = Instalock(lcu, copy.deepcopy(DEFAULT_CONFIG))
+
+    assert feature.get_available_queues() == [
+        {"id": 450, "name": "ARAM", "is_ranked": False},
+        {"id": 420, "name": "Ranked Solo/Duo", "is_ranked": True},
+    ]
+
+
+def test_toggle_mode_adds_and_removes(tmp_path, monkeypatch):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature = Instalock(FakeLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+
+    assert feature.toggle_mode(420) == [420]
+    assert feature.toggle_mode(450) == [420, 450]
+    assert feature.toggle_mode(420) == [450]
+
+
+def test_current_queue_id_reads_the_gameflow_session(tmp_path, monkeypatch):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    lcu = FakeLCUClient(
+        responses={"/lol-gameflow/v1/session": FakeResponse(json_data={"gameData": {"queue": {"id": 420}}})}
+    )
+    feature = Instalock(lcu, copy.deepcopy(DEFAULT_CONFIG))
+
+    assert feature.current_queue_id() == 420
+
+
+def test_current_queue_id_returns_none_when_unavailable(tmp_path, monkeypatch):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    lcu = FakeLCUClient(responses={"/lol-gameflow/v1/session": FakeResponse(status_code=404, json_data={})})
+    feature = Instalock(lcu, copy.deepcopy(DEFAULT_CONFIG))
+
+    assert feature.current_queue_id() is None

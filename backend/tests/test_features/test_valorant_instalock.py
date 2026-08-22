@@ -60,8 +60,8 @@ def make_feature():
     return feature, valorant, events
 
 
-def presence_with(session_loop_state="PREGAME"):
-    return {"matchPresenceData": {"sessionLoopState": session_loop_state}}
+def presence_with(session_loop_state="PREGAME", queue_id="unrated"):
+    return {"matchPresenceData": {"sessionLoopState": session_loop_state, "queueId": queue_id}}
 
 
 def test_toggle_flips_state_and_persists_config():
@@ -193,3 +193,45 @@ def test_lock_agent_does_nothing_without_a_configured_agent():
 
     assert valorant.calls == []
     assert "match-1" not in feature._seen_matches
+
+
+def test_get_available_queues_is_a_curated_static_list():
+    feature, _, _ = make_feature()
+
+    queues = feature.get_available_queues()
+
+    assert {"id": "competitive", "name": "Competitive"} in queues
+    assert {"id": "unrated", "name": "Unrated"} in queues
+
+
+def test_toggle_mode_adds_and_removes(tmp_path, monkeypatch):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature, _, _ = make_feature()
+
+    assert feature.toggle_mode("competitive") == ["competitive"]
+    assert feature.toggle_mode("swiftplay") == ["competitive", "swiftplay"]
+    assert feature.toggle_mode("competitive") == ["swiftplay"]
+
+
+def test_find_pending_match_ignores_a_disallowed_queue(tmp_path, monkeypatch):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature, valorant, _ = make_feature()
+    feature.toggle_mode("competitive")
+    valorant.pregame_fetch_match = lambda: {"ID": "match-1"}
+
+    assert feature.find_pending_match(presence_with(queue_id="swiftplay")) is None
+
+
+def test_find_pending_match_allows_a_configured_queue(tmp_path, monkeypatch):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature, valorant, _ = make_feature()
+    feature.toggle_mode("competitive")
+    valorant.pregame_fetch_match = lambda: {"ID": "match-1"}
+
+    assert feature.find_pending_match(presence_with(queue_id="competitive")) == "match-1"

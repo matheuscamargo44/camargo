@@ -843,6 +843,39 @@ main#view-root.view-enter {
   margin-bottom: 10px;
 }
 
+/* ── Mode Picker ────────────────────────────────────────────────── */
+.mode-picker-box {
+  width: 320px;
+}
+.mode-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 4px;
+}
+.mode-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.mode-picker-row:hover {
+  background: var(--surface-raised);
+}
+.mode-picker-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
 /* ── Skin Picker ────────────────────────────────────────────────── */
 .skin-picker-box {
   width: 500px;

@@ -8,6 +8,20 @@ from features.base import ThreadedFeature
 
 logger = logging.getLogger(__name__)
 
+#: VALORANT has nothing like League's /lol-game-queues/v1/queues to read
+#: this from, so it's a curated list of the queue IDs seen in presence data
+#: (matchPresenceData.queueId) mapped to display names.
+VALORANT_QUEUE_LABELS = {
+    "unrated": "Unrated",
+    "competitive": "Competitive",
+    "swiftplay": "Swiftplay",
+    "spikerush": "Spike Rush",
+    "deathmatch": "Deathmatch",
+    "ggteam": "Escalation",
+    "onefa": "Replication",
+    "snowball": "Snowball Fight",
+}
+
 
 class ValorantInstalock(ThreadedFeature):
     key = "valorant_instalock"
@@ -25,6 +39,8 @@ class ValorantInstalock(ThreadedFeature):
         self.agent = settings.get("agent", "None")
         self.region_override = settings.get("region", "")
         self.valorant.set_region(self.region_override or None)
+        #: Allowed queue IDs (e.g. "competitive", "swiftplay"); empty = all.
+        self.modes = list(settings.get("modes", []))
         #: Match IDs already locked this run, so a match isn't re-locked every
         #: poll while its pregame phase is still active. Not persisted: a
         #: restart re-locking an in-progress match is an acceptable edge case.
@@ -36,6 +52,7 @@ class ValorantInstalock(ThreadedFeature):
             "enabled": self.enabled,
             "instalock_agent": self.agent,
             "region": self.region_override or "auto",
+            "modes": list(self.modes),
         }
 
     def _save_settings(self):
@@ -43,7 +60,21 @@ class ValorantInstalock(ThreadedFeature):
         self.config["valorant_instalock"]["enabled"] = self.enabled
         self.config["valorant_instalock"]["agent"] = self.agent
         self.config["valorant_instalock"]["region"] = self.region_override
+        self.config["valorant_instalock"]["modes"] = self.modes
         save_config(self.config)
+
+    def get_available_queues(self) -> list:
+        return [{"id": queue_id, "name": name} for queue_id, name in VALORANT_QUEUE_LABELS.items()]
+
+    def toggle_mode(self, queue_id):
+        queue_id = str(queue_id)
+        if queue_id in self.modes:
+            self.modes.remove(queue_id)
+        else:
+            self.modes.append(queue_id)
+        self._save_settings()
+        self.on_event("info", f"Valorant Instalock modes: {self.modes or 'all'}")
+        return list(self.modes)
 
     def update_agent_list(self):
         response = self.valorant.fetch_agent_directory()
@@ -112,6 +143,8 @@ class ValorantInstalock(ThreadedFeature):
             return None
         match_data = presence.get("matchPresenceData") or {}
         if match_data.get("sessionLoopState") != "PREGAME":
+            return None
+        if self.modes and match_data.get("queueId") not in self.modes:
             return None
 
         match = self.valorant.pregame_fetch_match()

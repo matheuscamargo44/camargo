@@ -36,6 +36,7 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "champions": [],
         "delay_seconds": 0.3,
+        "modes": [],
     },
     "autoban": {
         "enabled": False,
@@ -67,6 +68,7 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "agent": "None",
         "region": "",
+        "modes": [],
     },
 }
 

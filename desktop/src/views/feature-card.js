@@ -6,6 +6,7 @@ import { openChampionPicker } from "../champion-picker.js";
 import { actionButton, el, toggleSwitch } from "../components.js";
 import { openConfirmModal, openFormModal } from "../modal.js";
 import { openIconPicker } from "../icon-picker.js";
+import { openModePicker } from "../mode-picker.js";
 import { openSkinPicker } from "../skin-picker.js";
 import { openTitlePicker } from "../title-picker.js";
 import { featureIcon } from "../icons.js";
@@ -386,6 +387,12 @@ function buildActionControl(key, actionDef, game) {
             statusField: actionDef.statusField,
             modalTitle: actionDef.modalTitle,
           });
+          if (changed) await refreshNow();
+          return;
+        }
+
+        if (actionDef.kind === "mode-picker") {
+          const changed = await openModePicker({ featureKey: key, modalTitle: actionDef.modalTitle });
           if (changed) await refreshNow();
           return;
         }

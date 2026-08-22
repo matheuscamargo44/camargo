@@ -13,12 +13,15 @@ class Instalock(ThreadedFeature):
         settings = self.config.get("instalock", {})
         self.enabled = bool(settings.get("enabled"))
         self.champions = list(settings.get("champions", []))
+        #: Allowed queue IDs (from /lol-game-queues/v1/queues); empty = all.
+        self.modes = list(settings.get("modes", []))
 
     def get_status(self) -> dict:
         return {
             "key": self.key,
             "enabled": self.enabled,
             "instalock_champion": list(self.champions),
+            "modes": list(self.modes),
         }
 
     def _save_settings(self):
@@ -26,7 +29,52 @@ class Instalock(ThreadedFeature):
             self.config["instalock"] = {}
         self.config["instalock"]["enabled"] = self.enabled
         self.config["instalock"]["champions"] = self.champions
+        self.config["instalock"]["modes"] = self.modes
         save_config(self.config)
+
+    def get_available_queues(self) -> list:
+        """Queues the client itself would show a player, straight from the
+        LCU — no hardcoded queue-ID table to keep in sync with Riot's.
+        """
+        response = self.lcu.lcu_request("GET", "/lol-game-queues/v1/queues")
+        if response.status_code != 200:
+            raise RuntimeError(f"Could not fetch queue list (HTTP {response.status_code})")
+
+        queues = [
+            {
+                "id": queue["id"],
+                "name": queue.get("name") or queue.get("shortName") or str(queue["id"]),
+                "is_ranked": bool(queue.get("isRanked")),
+            }
+            for queue in response.json()
+            if queue.get("isVisible") and queue.get("id", -1) >= 0
+        ]
+        return sorted(queues, key=lambda queue: queue["name"])
+
+    def toggle_mode(self, queue_id):
+        queue_id = int(queue_id)
+        if queue_id in self.modes:
+            self.modes.remove(queue_id)
+        else:
+            self.modes.append(queue_id)
+        self._save_settings()
+        self.on_event("info", f"Instalock modes: {self.modes or 'all'}")
+        return list(self.modes)
+
+    def current_queue_id(self):
+        """The queue ID for whatever's active right now (lobby, champ
+        select, in-game), or None if that can't be determined — e.g. no
+        active gameflow session. A miss here doesn't block locking: with no
+        signal either way, the mode filter should fail open, not silently
+        stop working.
+        """
+        response = self.lcu.lcu_request("GET", "/lol-gameflow/v1/session")
+        if response.status_code != 200:
+            return None
+        try:
+            return response.json().get("gameData", {}).get("queue", {}).get("id")
+        except (AttributeError, TypeError):
+            return None
 
     def update_champion_list(self):
         response = self.lcu.lcu_request("GET", "/lol-game-data/assets/v1/champion-summary.json")
@@ -149,6 +197,12 @@ class Instalock(ThreadedFeature):
                 if cell_id is None:
                     self._sleep(0.3)
                     continue
+
+                if self.modes:
+                    queue_id = self.current_queue_id()
+                    if queue_id is not None and queue_id not in self.modes:
+                        self._sleep(0.5)
+                        continue
 
                 pending = self.find_pending_action(session, cell_id)
                 if pending is not None:

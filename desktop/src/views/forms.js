@@ -62,6 +62,12 @@ export const FEATURE_ACTIONS = {
       statusField: "instalock_champion",
       modalTitle: "Instalock Priority List",
     },
+    {
+      label: "Modes",
+      action: null,
+      kind: "mode-picker",
+      modalTitle: "Instalock Modes",
+    },
   ],
   autoban: [
     {
@@ -208,6 +214,12 @@ export const FEATURE_ACTIONS = {
       action: "set_region",
       modalTitle: "Set VALORANT Region",
       fields: [{ name: "region_code", label: "Region", type: "select", options: VALORANT_REGION_OPTIONS }],
+    },
+    {
+      label: "Modes",
+      action: null,
+      kind: "mode-picker",
+      modalTitle: "Instalock Modes",
     },
   ],
   valorant_dodge: [
