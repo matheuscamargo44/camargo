@@ -2,6 +2,7 @@ import { fetchFeatureMeta, fetchFeatures, fetchHealth } from "./api.js";
 
 const featureSubscribers = new Set();
 const healthSubscribers = new Set();
+const metaSubscribers = new Set();
 
 let latestFeatures = {};
 let latestHealth = { status: "unknown", league_connected: false, valorant_connected: false };
@@ -36,6 +37,17 @@ export function onHealthUpdate(callback) {
   return () => healthSubscribers.delete(callback);
 }
 
+/**
+ * Feature metadata arriving (possibly well after the app first rendered, if
+ * the backend was slow to start). Screens built before that point need this
+ * to redraw themselves instead of staying stuck on an empty state forever.
+ */
+export function onFeatureMetaUpdate(callback) {
+  metaSubscribers.add(callback);
+  if (featureMeta.length > 0) callback(featureMeta);
+  return () => metaSubscribers.delete(callback);
+}
+
 async function pollOnce() {
   try {
     // Metadata (title/category per feature) is static once loaded, so only
@@ -46,7 +58,10 @@ async function pollOnce() {
     const [features, health, meta] = await Promise.all(requests);
     latestFeatures = features;
     latestHealth = health;
-    if (meta) featureMeta = meta;
+    if (meta) {
+      featureMeta = meta;
+      for (const cb of metaSubscribers) cb(featureMeta);
+    }
   } catch (error) {
     latestHealth = { status: "offline", league_connected: false, valorant_connected: false };
   }
