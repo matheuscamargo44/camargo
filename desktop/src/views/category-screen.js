@@ -14,8 +14,13 @@ import { buildFeatureCard } from "./feature-card.js";
  * it landing late, a screen built during that window would show an empty
  * state forever, even once the backend is healthy. onFeatureMetaUpdate
  * rebuilds the screen the moment real metadata shows up.
+ *
+ * `excludeKeys` hides specific features from the list without unregistering
+ * them backend-side — e.g. valorant_rank still needs to run and update
+ * `features.valorant_rank` for the topbar status pill, it just shouldn't
+ * also show its own card here.
  */
-export function renderCategoryScreen(root, { categories }) {
+export function renderCategoryScreen(root, { categories, excludeKeys = [] }) {
   let disposers = [];
   let unsubscribeFeatures = null;
 
@@ -28,6 +33,7 @@ export function renderCategoryScreen(root, { categories }) {
     const metaByCategory = new Map();
     for (const meta of metaList) {
       if (!categories.includes(meta.category)) continue;
+      if (excludeKeys.includes(meta.key)) continue;
       if (!metaByCategory.has(meta.category)) metaByCategory.set(meta.category, []);
       metaByCategory.get(meta.category).push(meta);
     }
