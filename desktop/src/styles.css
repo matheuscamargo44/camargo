@@ -109,13 +109,6 @@ body {
   animation: spin 0.8s linear infinite;
 }
 
-.loading-text {
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 500;
-  animation: pulse 2s ease-in-out infinite;
-}
-
 /* ── Top Bar ────────────────────────────────────────────────────── */
 #topbar {
   display: flex;
@@ -126,6 +119,12 @@ body {
   border-bottom: 1px solid var(--border);
   flex: 0 0 auto;
   animation: slideDown 0.3s ease;
+}
+
+#status-slots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 #nav-links {

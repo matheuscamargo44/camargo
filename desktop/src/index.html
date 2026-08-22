@@ -2,19 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://ddragon.leagueoflegends.com https://raw.communitydragon.org; connect-src http://127.0.0.1:8731 https://ddragon.leagueoflegends.com https://raw.communitydragon.org; font-src 'self'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://ddragon.leagueoflegends.com https://raw.communitydragon.org https://media.valorant-api.com; connect-src http://127.0.0.1:8731 https://ddragon.leagueoflegends.com https://raw.communitydragon.org https://valorant-api.com; font-src 'self'; base-uri 'none'; form-action 'none'" />
     <title>camargo</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div id="loading-screen">
       <div class="loading-spinner"></div>
-      <span class="loading-text">Connecting to backend...</span>
     </div>
     <div id="app-shell">
       <div id="topbar" hidden>
         <nav id="nav-links"></nav>
-        <div id="league-status-slot"></div>
+        <div id="status-slots">
+          <div id="valorant-status-slot"></div>
+          <div id="league-status-slot"></div>
+        </div>
       </div>
       <main id="view-root"></main>
     </div>

@@ -3,6 +3,7 @@ import { el } from "../components.js";
 import { mountLeagueStatus } from "../league-status.js";
 import { registerRoute, startRouter } from "../router.js";
 import { startPolling } from "../state.js";
+import { mountValorantStatus } from "../valorant-status.js";
 import { renderAutomationView } from "./automation.js";
 import { NAV_ITEMS } from "./categories.js";
 import { renderCustomizationView } from "./customization.js";
@@ -13,6 +14,7 @@ import { renderValorantView } from "./valorant.js";
 const navRoot = document.getElementById("nav-links");
 const viewRoot = document.getElementById("view-root");
 const leagueStatusSlot = document.getElementById("league-status-slot");
+const valorantStatusSlot = document.getElementById("valorant-status-slot");
 const loadingScreen = document.getElementById("loading-screen");
 const topbar = document.getElementById("topbar");
 
@@ -67,6 +69,7 @@ async function bootstrap() {
   if (topbar) topbar.hidden = false;
 
   buildNav();
+  mountValorantStatus(valorantStatusSlot);
   mountLeagueStatus(leagueStatusSlot);
 
   registerRoute("/automation", renderAutomationView);

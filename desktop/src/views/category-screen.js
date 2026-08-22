@@ -35,12 +35,7 @@ export function renderCategoryScreen(root, { categories }) {
 
     if (metaByCategory.size === 0) {
       unsubscribeFeatures = null;
-      root.appendChild(
-        el("div", { class: "empty-state" }, [
-          el("div", { class: "loading-spinner" }),
-          el("span", { text: "Waiting for the backend to start…" }),
-        ])
-      );
+      root.appendChild(el("div", { class: "empty-state" }, [el("div", { class: "loading-spinner" })]));
       return;
     }
 
