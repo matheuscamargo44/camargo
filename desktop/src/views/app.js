@@ -4,11 +4,9 @@ import { mountLeagueStatus } from "../league-status.js";
 import { registerRoute, startRouter } from "../router.js";
 import { startPolling } from "../state.js";
 import { mountValorantStatus } from "../valorant-status.js";
-import { renderAutomationView } from "./automation.js";
 import { NAV_ITEMS } from "./categories.js";
-import { renderCustomizationView } from "./customization.js";
+import { renderLeagueView } from "./league.js";
 import { renderLogsView } from "./logs.js";
-import { renderSocialView } from "./social.js";
 import { renderValorantView } from "./valorant.js";
 
 const navRoot = document.getElementById("nav-links");
@@ -20,9 +18,9 @@ const topbar = document.getElementById("topbar");
 
 function buildNav() {
   for (const item of NAV_ITEMS) {
-    const link = el("a", { href: `#${item.route}`, "data-route": item.route, class: "nav-link" }, [
-      el("span", { text: item.label }),
-    ]);
+    const attrs = { href: `#${item.route}`, "data-route": item.route, class: "nav-link" };
+    if (item.matchPrefix) attrs["data-match-prefix"] = item.matchPrefix;
+    const link = el("a", attrs, [el("span", { text: item.label })]);
     navRoot.appendChild(link);
   }
 }
@@ -72,9 +70,9 @@ async function bootstrap() {
   mountValorantStatus(valorantStatusSlot);
   mountLeagueStatus(leagueStatusSlot);
 
-  registerRoute("/automation", renderAutomationView);
-  registerRoute("/customization", renderCustomizationView);
-  registerRoute("/social", renderSocialView);
+  registerRoute("/league/automation", (root) => renderLeagueView(root, "Automation"));
+  registerRoute("/league/customization", (root) => renderLeagueView(root, "Customization"));
+  registerRoute("/league/social", (root) => renderLeagueView(root, "Social"));
   registerRoute("/valorant", renderValorantView);
   registerRoute("/logs", renderLogsView);
   startRouter(viewRoot, navRoot);

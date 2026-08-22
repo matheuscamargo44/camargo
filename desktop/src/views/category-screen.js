@@ -1,6 +1,5 @@
 import { el } from "../components.js";
 import { getFeatureMeta, onFeatureMetaUpdate, onFeaturesUpdate } from "../state.js";
-import { CATEGORY_LABELS } from "./categories.js";
 import { buildFeatureCard } from "./feature-card.js";
 
 /**

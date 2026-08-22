@@ -153,6 +153,28 @@ body {
 .nav-link:hover { background: var(--surface); color: var(--text); }
 .nav-link.active { background: var(--accent-soft); color: var(--accent-hover); }
 
+/* ── Sub-nav (e.g. Automation/Customization/Social inside League) ─── */
+.subnav {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.subnav-link {
+  padding: 5px 12px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 12px;
+  background: var(--surface);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.subnav-link:hover { background: var(--surface-hover); color: var(--text); }
+.subnav-link.active { background: var(--accent-soft); color: var(--accent-hover); }
+
 /* ── View Root (route transitions) ──────────────────────────────── */
 main#view-root {
   flex: 1;

@@ -22,8 +22,12 @@ function currentPath() {
 function updateActiveNav(path) {
   if (!navLinksRoot) return;
   for (const link of navLinksRoot.querySelectorAll("[data-route]")) {
-    link.classList.toggle("active", link.dataset.route === path);
-    link.setAttribute("aria-current", link.dataset.route === path ? "page" : "false");
+    // A top-level tab with sub-routes (e.g. League of Legends) stays active
+    // across all of them, not just its own default landing route.
+    const prefix = link.dataset.matchPrefix;
+    const isActive = prefix ? path.startsWith(prefix) : link.dataset.route === path;
+    link.classList.toggle("active", isActive);
+    link.setAttribute("aria-current", isActive ? "page" : "false");
   }
 }
 

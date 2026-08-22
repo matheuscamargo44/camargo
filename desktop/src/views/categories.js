@@ -1,19 +1,16 @@
+// Top-level tabs. League of Legends groups three sub-tabs under one nav
+// entry (see LEAGUE_SUB_TABS); Valorant and Logs are flat.
 export const NAV_ITEMS = [
-  { route: "/automation", label: "Automation" },
-  { route: "/customization", label: "Customization" },
-  { route: "/social", label: "Social" },
+  { route: "/league/automation", matchPrefix: "/league", label: "League of Legends" },
   { route: "/valorant", label: "Valorant" },
   { route: "/logs", label: "Logs" },
 ];
 
-export const CATEGORY_LABELS = {
-  Automation: "Automation",
-  Customization: "Customization",
-  Social: "Social",
-  Valorant: "Valorant",
-};
+// Sub-navigation shown inside the League of Legends tab.
+export const LEAGUE_SUB_TABS = [
+  { category: "Automation", route: "/league/automation", label: "Automation" },
+  { category: "Customization", route: "/league/customization", label: "Customization" },
+  { category: "Social", route: "/league/social", label: "Social" },
+];
 
-export const AUTOMATION_SCREEN_CATEGORIES = ["Automation"];
-export const CUSTOMIZATION_SCREEN_CATEGORIES = ["Customization"];
-export const SOCIAL_SCREEN_CATEGORIES = ["Social"];
 export const VALORANT_SCREEN_CATEGORIES = ["Valorant"];
