@@ -49,22 +49,31 @@ export function onFeatureMetaUpdate(callback) {
 }
 
 async function pollOnce() {
-  try {
-    // Metadata (title/category per feature) is static once loaded, so only
-    // fetch it until it succeeds — everything else is polled every cycle.
-    const requests = [fetchFeatures(), fetchHealth()];
-    if (featureMeta.length === 0) requests.push(fetchFeatureMeta());
+  // allSettled, not all: one endpoint timing out (see api.js) must not throw
+  // away results the others already got back. A previous version used
+  // Promise.all here, so a single flaky request could leave the whole app
+  // stuck showing stale/empty data even while everything else kept working.
+  const needsMeta = featureMeta.length === 0;
+  const requests = [fetchFeatures(), fetchHealth()];
+  if (needsMeta) requests.push(fetchFeatureMeta());
 
-    const [features, health, meta] = await Promise.all(requests);
-    latestFeatures = features;
-    latestHealth = health;
-    if (meta) {
-      featureMeta = meta;
-      for (const cb of metaSubscribers) cb(featureMeta);
-    }
-  } catch (error) {
+  const [featuresResult, healthResult, metaResult] = await Promise.allSettled(requests);
+
+  if (featuresResult.status === "fulfilled") {
+    latestFeatures = featuresResult.value;
+  }
+
+  if (healthResult.status === "fulfilled") {
+    latestHealth = healthResult.value;
+  } else {
     latestHealth = { status: "offline", league_connected: false, valorant_connected: false };
   }
+
+  if (needsMeta && metaResult?.status === "fulfilled") {
+    featureMeta = metaResult.value;
+    for (const cb of metaSubscribers) cb(featureMeta);
+  }
+
   for (const cb of featureSubscribers) cb(latestFeatures);
   for (const cb of healthSubscribers) cb(latestHealth);
 }
