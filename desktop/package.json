@@ -1,7 +1,7 @@
 {
   "name": "camargo",
   "productName": "camargo",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Desktop UI for the camargo League of Legends & VALORANT toolkit",
   "main": "main.js",
   "scripts": {
