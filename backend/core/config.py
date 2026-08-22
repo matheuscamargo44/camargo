@@ -34,12 +34,12 @@ CONFIG_LOCK = threading.RLock()
 DEFAULT_CONFIG = {
     "instalock": {
         "enabled": False,
-        "champion": "None",
+        "champions": [],
         "delay_seconds": 0.3,
     },
     "autoban": {
         "enabled": False,
-        "champion": "None",
+        "champions": [],
         "delay_seconds": 0.3,
     },
     "auto_accept": {
@@ -51,7 +51,7 @@ DEFAULT_CONFIG = {
     },
     "aram_bench_swap": {
         "enabled": False,
-        "champion": "None",
+        "champions": [],
     },
     "auto_honor": {
         "enabled": False,
@@ -62,6 +62,11 @@ DEFAULT_CONFIG = {
     },
     "random_skin": {
         "enabled": False,
+    },
+    "valorant_instalock": {
+        "enabled": False,
+        "agent": "None",
+        "region": "",
     },
 }
 
@@ -75,6 +80,26 @@ def get_automation_delay(config, section, default):
     except (TypeError, ValueError):
         value = default
     return round(min(MAX_AUTOMATION_DELAY, max(MIN_AUTOMATION_DELAY, value)), 1)
+
+
+#: Sections that used to store a single "champion" string before priority
+#: lists existed.
+_LEGACY_CHAMPION_SECTIONS = ("instalock", "autoban", "aram_bench_swap")
+
+
+def _migrate_legacy_champion_field(config, merged):
+    """Folds a pre-priority-list "champion" string into the new "champions"
+    list, so upgrading doesn't silently drop it. Reads from the raw stored
+    `config`, since `_merge_defaults` already dropped the now-unknown key.
+    """
+    for section in _LEGACY_CHAMPION_SECTIONS:
+        old_section = config.get(section)
+        if not isinstance(old_section, dict):
+            continue
+        old_value = old_section.get("champion")
+        if old_value and old_value not in ("None", "Random") and not merged[section].get("champions"):
+            merged[section]["champions"] = [old_value]
+    return merged
 
 
 def _merge_defaults(config, defaults):
@@ -91,11 +116,7 @@ def _merge_defaults(config, defaults):
         else:
             merged[key] = value
 
-    # Migrate any legacy "Random" setting to "None"
-    if merged.get("instalock", {}).get("champion") == "Random":
-        merged["instalock"]["champion"] = "None"
-
-    return merged
+    return _migrate_legacy_champion_field(config, merged)
 
 
 def load_config():

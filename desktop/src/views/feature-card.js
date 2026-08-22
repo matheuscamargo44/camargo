@@ -1,5 +1,7 @@
 import { callAction, reportClientError, toggleFeature } from "../api.js";
+import { openAgentPicker } from "../agent-picker.js";
 import { openBadgePicker } from "../badge-picker.js";
+import { openChampionListEditor } from "../champion-list-editor.js";
 import { openChampionPicker } from "../champion-picker.js";
 import { actionButton, el, toggleSwitch } from "../components.js";
 import { openConfirmModal, openFormModal } from "../modal.js";
@@ -7,9 +9,77 @@ import { openIconPicker } from "../icon-picker.js";
 import { openSkinPicker } from "../skin-picker.js";
 import { openTitlePicker } from "../title-picker.js";
 import { featureIcon } from "../icons.js";
-import { isLeagueConnected, onHealthUpdate, refreshNow } from "../state.js";
+import { isFeatureConnected, onHealthUpdate, refreshNow } from "../state.js";
 import { formatSpecialDisplay, formatValue, isBooleanField, isSpecialDisplayField, STATUS_FIELD_LABELS, statusPill } from "../status-format.js";
+import { getAgentIcon, getAgentIconsMap, getRankTierInfo, getRankTiersMap } from "../valorant-data.js";
 import { FEATURE_ACTIONS, FEATURE_TOGGLES } from "./forms.js";
+
+/** Agent portrait + name (+ optional region suffix), mirroring the champion
+ * pill League's Instalock card uses — same lazy-resolve-then-backfill trick,
+ * just against valorant-api.com instead of Data Dragon.
+ */
+function buildAgentPill(agentName, suffix = "") {
+  const iconUrl = getAgentIcon(agentName);
+  const img = el("img", { src: iconUrl, class: "stat-champ-thumb", alt: agentName });
+  if (!iconUrl) img.style.display = "none";
+  img.onerror = () => { img.style.display = "none"; };
+  const labelSpan = el("span", { text: `${agentName}${suffix}` });
+  const pill = el("div", { class: "stat-champ-pill" }, [img, labelSpan]);
+
+  if (!iconUrl) {
+    getAgentIconsMap().then((map) => {
+      const updated = map[agentName.toLowerCase()];
+      if (updated) {
+        img.src = updated;
+        img.style.display = "";
+      }
+    });
+  }
+
+  return pill;
+}
+
+/** Tier icon + name + RR, e.g. "Diamond 2 · 11 RR". Resolves the icon/name
+ * lazily from the public tier list the same way status-format.js resolves
+ * League skin names — render with whatever's cached, then backfill.
+ */
+function buildRankPill(tier, rr) {
+  const info = getRankTierInfo(tier);
+  const labelText = info ? `${info.name}${rr != null ? ` · ${rr} RR` : ""}` : `Tier ${tier}`;
+  const img = el("img", { src: info?.icon || "", class: "stat-champ-thumb", alt: labelText });
+  if (!info?.icon) img.style.display = "none";
+  img.onerror = () => { img.style.display = "none"; };
+  const labelSpan = el("span", { text: labelText });
+  const pill = el("div", { class: "stat-champ-pill" }, [img, labelSpan]);
+
+  if (!info) {
+    getRankTiersMap().then((map) => {
+      const updated = map[tier];
+      if (updated) {
+        if (updated.icon) {
+          img.src = updated.icon;
+          img.style.display = "";
+        }
+        labelSpan.textContent = `${updated.name}${rr != null ? ` · ${rr} RR` : ""}`;
+      }
+    });
+  }
+
+  return pill;
+}
+
+/** Champion priority list as a row of pills (or "None" when empty). */
+function buildChampionListDisplay(field, names) {
+  const list = Array.isArray(names) ? names.filter(Boolean) : names && names !== "None" ? [names] : [];
+  if (list.length === 0) {
+    return el("span", { text: "None" });
+  }
+  const wrap = el("div", { class: "champ-list-pills" });
+  for (const name of list) {
+    wrap.appendChild(formatSpecialDisplay(field, name));
+  }
+  return wrap;
+}
 
 const FEATURE_DESCRIPTIONS = {
   auto_accept: "Accepts match ready checks automatically",
@@ -23,6 +93,8 @@ const FEATURE_DESCRIPTIONS = {
   remove_friends: "Deletes all friends from account",
   status_message: "Custom status message on chat profile",
   badges: "Challenge badges displayed on profile banner",
+  valorant_dodge: "Leaves agent select immediately",
+  valorant_chat_toggle: "Deceive mode (appear offline to friends)",
 };
 
 /**
@@ -75,24 +147,44 @@ export function buildFeatureCard(meta, initialStatus) {
       return;
     }
 
-    // Special formatted status for Instalock
+    // Special formatted status for Instalock (priority list, tried in order)
     if (meta.key === "instalock") {
-      const champ = status.instalock_champion || status.champion || "None";
-      statusContainer.appendChild(formatSpecialDisplay("instalock_champion", champ));
+      statusContainer.appendChild(buildChampionListDisplay("instalock_champion", status.instalock_champion));
       return;
     }
 
-    // Special formatted status for AutoBan
+    // Special formatted status for AutoBan (priority list, tried in order)
     if (meta.key === "autoban") {
-      const champ = status.autoban_champion || status.champion || "None";
-      statusContainer.appendChild(formatSpecialDisplay("autoban_champion", champ));
+      statusContainer.appendChild(buildChampionListDisplay("autoban_champion", status.autoban_champion));
       return;
     }
 
-    // Special formatted status for ARAM Bench Swap
+    // Special formatted status for Aram Bench Swap (priority list, tried in order)
     if (meta.key === "aram_bench_swap") {
-      const champ = status.target_champion || status.champion || "None";
-      statusContainer.appendChild(formatSpecialDisplay("target_champion", champ));
+      statusContainer.appendChild(buildChampionListDisplay("target_champion", status.target_champion));
+      return;
+    }
+
+    // Special formatted status for VALORANT Instalock
+    if (meta.key === "valorant_instalock") {
+      const agent = status.instalock_agent || "None";
+      const region = status.region && status.region !== "auto" ? ` · ${status.region.toUpperCase()}` : "";
+      if (agent.toLowerCase() === "none") {
+        statusContainer.appendChild(el("span", { text: "None" }));
+      } else {
+        statusContainer.appendChild(buildAgentPill(agent, region));
+      }
+      return;
+    }
+
+    // Special formatted status for VALORANT Rank (combines tier + RR into
+    // one pill instead of two separate lines)
+    if (meta.key === "valorant_rank") {
+      if (status.tier === null || status.tier === undefined) {
+        statusContainer.appendChild(el("span", { class: "feature-row-desc", text: "Rank unavailable" }));
+        return;
+      }
+      statusContainer.appendChild(buildRankPill(status.tier, status.rr));
       return;
     }
 
@@ -134,7 +226,7 @@ export function buildFeatureCard(meta, initialStatus) {
   // Build Toggles
   const toggleButtons = [];
   for (const toggleDef of toggleDefs) {
-    const { element, button } = buildToggleControl(meta.key, toggleDef, initialStatus, toggleDefs.length > 1);
+    const { element, button } = buildToggleControl(meta.key, toggleDef, initialStatus, toggleDefs.length > 1, meta.game);
     toggleButtons.push({ ...toggleDef, button });
     rightEl.appendChild(element);
   }
@@ -142,12 +234,12 @@ export function buildFeatureCard(meta, initialStatus) {
   // Build Action Buttons
   const actionButtons = [];
   for (const actionDef of actionDefs) {
-    const btn = buildActionControl(meta.key, actionDef);
+    const btn = buildActionControl(meta.key, actionDef, meta.game);
     actionButtons.push(btn);
     rightEl.appendChild(btn);
   }
 
-  function applyLeagueState(connected) {
+  function applyConnectionState(connected) {
     rowEl.classList.toggle("league-disconnected", !connected);
     for (const { button } of toggleButtons) {
       button.disabled = !connected;
@@ -157,12 +249,12 @@ export function buildFeatureCard(meta, initialStatus) {
     }
   }
 
-  applyLeagueState(isLeagueConnected());
+  applyConnectionState(isFeatureConnected(meta.game));
   // Kept so the screen can unsubscribe on teardown: the router throws the DOM
   // away on every route change, and a leaked listener would keep a detached
   // card alive and re-rendered on every poll.
-  const unsubscribeHealth = onHealthUpdate((health) => {
-    applyLeagueState(Boolean(health?.league_connected));
+  const unsubscribeHealth = onHealthUpdate(() => {
+    applyConnectionState(isFeatureConnected(meta.game));
   });
 
   return {
@@ -181,10 +273,10 @@ export function buildFeatureCard(meta, initialStatus) {
   };
 }
 
-function buildToggleControl(key, toggleDef, initialStatus, showLabel = false) {
+function buildToggleControl(key, toggleDef, initialStatus, showLabel = false, game) {
   const checked = toggleDef.invert ? !initialStatus?.[toggleDef.field] : Boolean(initialStatus?.[toggleDef.field]);
   const button = toggleSwitch(checked, async () => {
-    if (!isLeagueConnected()) return;
+    if (!isFeatureConnected(game)) return;
     button.disabled = true;
     try {
       if (toggleDef.action) {
@@ -197,7 +289,7 @@ function buildToggleControl(key, toggleDef, initialStatus, showLabel = false) {
       console.error(`toggle ${key} failed:`, error);
       reportClientError(`Toggling ${key} failed: ${error.message}`, error.stack, "toggle");
     } finally {
-      button.disabled = !isLeagueConnected();
+      button.disabled = !isFeatureConnected(game);
     }
   });
 
@@ -224,6 +316,13 @@ const PARAM_COLLECTORS = {
       allowNone: actionDef.allowNone !== false,
     });
     return champName === null ? null : { [actionDef.paramName || "champion_name"]: champName };
+  },
+  "agent-picker": async (actionDef) => {
+    const agentName = await openAgentPicker({
+      title: actionDef.pickerTitle || actionDef.label,
+      allowNone: actionDef.allowNone !== false,
+    });
+    return agentName === null ? null : { [actionDef.paramName || "agent_name"]: agentName };
   },
   "skin-picker": async (actionDef) => {
     const skinId = await openSkinPicker({ title: actionDef.modalTitle || "Choose Background" });
@@ -270,17 +369,27 @@ function actionTone(actionDef) {
   return actionDef.quiet ? "secondary" : "primary";
 }
 
-function buildActionControl(key, actionDef) {
+function buildActionControl(key, actionDef, game) {
   const button = actionButton(
     actionDef.label,
     async () => {
-      if (!isLeagueConnected() || button.disabled) return;
+      if (!isFeatureConnected(game) || button.disabled) return;
 
       // Bulk actions (disenchanting, mass invites) can run for a while; keep
       // the button from firing twice and show that something is happening.
       button.disabled = true;
       button.classList.add("btn-busy");
       try {
+        if (actionDef.kind === "champion-list-editor") {
+          const changed = await openChampionListEditor({
+            featureKey: key,
+            statusField: actionDef.statusField,
+            modalTitle: actionDef.modalTitle,
+          });
+          if (changed) await refreshNow();
+          return;
+        }
+
         const params = await collectParams(actionDef);
         if (params === null) return;
 
@@ -296,7 +405,7 @@ function buildActionControl(key, actionDef) {
         );
       } finally {
         button.classList.remove("btn-busy");
-        button.disabled = !isLeagueConnected();
+        button.disabled = !isFeatureConnected(game);
       }
     },
     actionTone(actionDef)

@@ -4,7 +4,7 @@ const featureSubscribers = new Set();
 const healthSubscribers = new Set();
 
 let latestFeatures = {};
-let latestHealth = { status: "unknown", league_connected: false };
+let latestHealth = { status: "unknown", league_connected: false, valorant_connected: false };
 let featureMeta = [];
 
 export function getFeatureMeta() {
@@ -13,6 +13,15 @@ export function getFeatureMeta() {
 
 export function isLeagueConnected() {
   return Boolean(latestHealth && latestHealth.league_connected);
+}
+
+export function isValorantConnected() {
+  return Boolean(latestHealth && latestHealth.valorant_connected);
+}
+
+/** Whichever client a feature belongs to is currently reachable. */
+export function isFeatureConnected(game) {
+  return game === "valorant" ? isValorantConnected() : isLeagueConnected();
 }
 
 export function onFeaturesUpdate(callback) {
@@ -39,7 +48,7 @@ async function pollOnce() {
     latestHealth = health;
     if (meta) featureMeta = meta;
   } catch (error) {
-    latestHealth = { status: "offline", league_connected: false };
+    latestHealth = { status: "offline", league_connected: false, valorant_connected: false };
   }
   for (const cb of featureSubscribers) cb(latestFeatures);
   for (const cb of healthSubscribers) cb(latestHealth);

@@ -27,6 +27,16 @@ const RANKED_DIVISION_OPTIONS = [
   { value: "IV", label: "Division IV" },
 ];
 
+const VALORANT_REGION_OPTIONS = [
+  { value: "auto", label: "Auto-detect" },
+  { value: "na", label: "North America" },
+  { value: "eu", label: "Europe" },
+  { value: "latam", label: "Latin America" },
+  { value: "br", label: "Brazil" },
+  { value: "ap", label: "Asia Pacific" },
+  { value: "kr", label: "Korea" },
+];
+
 // Every feature with a persistent on/off state gets a switch here
 export const FEATURE_TOGGLES = {
   auto_accept: [{ field: "enabled", label: "Enabled", action: null }],
@@ -38,41 +48,37 @@ export const FEATURE_TOGGLES = {
   chat_toggle: [{ field: "disconnected", label: "Chat Connected", action: null, invert: true }],
   instalock: [{ field: "enabled", label: "Enabled", action: null }],
   autoban: [{ field: "enabled", label: "Enabled", action: null }],
+  valorant_instalock: [{ field: "enabled", label: "Enabled", action: null }],
+  valorant_chat_toggle: [{ field: "disconnected", label: "Chat Connected", action: null, invert: true }],
 };
 
 // Declarative config: each feature key maps to a list of actions
 export const FEATURE_ACTIONS = {
   instalock: [
     {
-      label: "Set Champion",
-      action: "set_champion",
-      kind: "champion-picker",
-      pickerTitle: "Select Champion for Instalock",
-      modalTitle: "Set Instalock Champion",
-      allowNone: true,
-      paramName: "champion_name",
+      label: "Champions",
+      action: null,
+      kind: "champion-list-editor",
+      statusField: "instalock_champion",
+      modalTitle: "Instalock Priority List",
     },
   ],
   autoban: [
     {
-      label: "Set Champion",
-      action: "set_champion",
-      kind: "champion-picker",
-      pickerTitle: "Select Champion for AutoBan",
-      modalTitle: "Set AutoBan Champion",
-      allowNone: true,
-      paramName: "champion_name",
+      label: "Champions",
+      action: null,
+      kind: "champion-list-editor",
+      statusField: "autoban_champion",
+      modalTitle: "AutoBan Priority List",
     },
   ],
   aram_bench_swap: [
     {
-      label: "Set Target",
-      action: "set_champion",
-      kind: "champion-picker",
-      pickerTitle: "Select Target ARAM Champion",
-      modalTitle: "Set ARAM Target Champion",
-      allowNone: true,
-      paramName: "champion_name",
+      label: "Champions",
+      action: null,
+      kind: "champion-list-editor",
+      statusField: "target_champion",
+      modalTitle: "Aram Priority List",
     },
   ],
   auto_party_invite: [
@@ -187,4 +193,24 @@ export const FEATURE_ACTIONS = {
     { label: "Restart", action: "restart", modalTitle: "Restart Client UX", fields: [], confirmOnly: true },
   ],
   dodge: [{ label: "Dodge", action: "dodge", modalTitle: "Dodge Queue", fields: [], confirmOnly: true, variant: "danger" }],
+  valorant_instalock: [
+    {
+      label: "Set Agent",
+      action: "set_agent",
+      kind: "agent-picker",
+      pickerTitle: "Select Agent for Instalock",
+      modalTitle: "Set Instalock Agent",
+      allowNone: true,
+      paramName: "agent_name",
+    },
+    {
+      label: "Region",
+      action: "set_region",
+      modalTitle: "Set VALORANT Region",
+      fields: [{ name: "region_code", label: "Region", type: "select", options: VALORANT_REGION_OPTIONS }],
+    },
+  ],
+  valorant_dodge: [
+    { label: "Dodge", action: "dodge", modalTitle: "Dodge Agent Select", fields: [], confirmOnly: true, variant: "danger" },
+  ],
 };

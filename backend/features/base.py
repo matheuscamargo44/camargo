@@ -13,6 +13,9 @@ class Feature(ABC):
     title: str = ""
     #: grouping shown in the UI, e.g. "Automation", "Customization"
     category: str = ""
+    #: which shared client the registry injects ("league" -> LCUClient,
+    #: "valorant" -> ValorantClient) and which connection gates its actions.
+    game: str = "league"
 
     def __init__(self, lcu_client, config, on_event=None):
         self.lcu = lcu_client

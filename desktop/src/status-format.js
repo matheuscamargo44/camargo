@@ -8,6 +8,8 @@ export const STATUS_FIELD_LABELS = {
   autoban_enabled: "AutoBan",
   autoban_champion: "AutoBan Champion",
   target_champion: "Target Champion",
+  instalock_agent: "Agent",
+  region: "Region",
   summoners: "Invite Group",
   current_title: "Current Title",
   tier: "Ranked Chat Tier",

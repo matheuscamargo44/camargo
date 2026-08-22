@@ -115,7 +115,11 @@ def clear_logs():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "league_connected": registry.lcu.is_league_connected()}
+    return {
+        "status": "ok",
+        "league_connected": registry.lcu.is_league_connected(),
+        "valorant_connected": registry.valorant.is_connected(),
+    }
 
 
 @app.get("/summoner")
@@ -161,20 +165,26 @@ def list_features():
 @app.get("/features/meta")
 def list_features_meta():
     return [
-        {"key": feature.key, "title": feature.title, "category": feature.category}
+        {"key": feature.key, "title": feature.title, "category": feature.category, "game": feature.game}
         for feature in registry.features.values()
     ]
 
 
+def _require_connected(feature):
+    if registry.is_connected(feature):
+        return
+    label = "VALORANT" if feature.game == "valorant" else "League"
+    raise HTTPException(status_code=503, detail=f"{label} client is not detected")
+
+
 @app.post("/features/{key}/toggle")
 def toggle_feature(key: str):
-    if not registry.lcu.is_league_connected():
-        raise HTTPException(status_code=503, detail="League client is not detected")
-
     try:
         feature = registry.get(key)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+    _require_connected(feature)
 
     if hasattr(feature, "toggle"):
         feature.toggle()
@@ -189,13 +199,12 @@ def call_feature_action(key: str, action_name: str, params: dict = Body(default=
     """Generic dispatch for feature-specific actions (e.g. changing an icon,
     setting instalock champion). `params` keys must match the method's kwargs.
     """
-    if not registry.lcu.is_league_connected():
-        raise HTTPException(status_code=503, detail="League client is not detected")
-
     try:
         feature = registry.get(key)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+    _require_connected(feature)
 
     if action_name.startswith("_") or action_name in _RESERVED_ACTIONS:
         raise HTTPException(status_code=404, detail=f"'{key}' has no action '{action_name}'")

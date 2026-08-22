@@ -8,6 +8,7 @@ import { NAV_ITEMS } from "./categories.js";
 import { renderCustomizationView } from "./customization.js";
 import { renderLogsView } from "./logs.js";
 import { renderSocialView } from "./social.js";
+import { renderValorantView } from "./valorant.js";
 
 const navRoot = document.getElementById("nav-links");
 const viewRoot = document.getElementById("view-root");
@@ -71,6 +72,7 @@ async function bootstrap() {
   registerRoute("/automation", renderAutomationView);
   registerRoute("/customization", renderCustomizationView);
   registerRoute("/social", renderSocialView);
+  registerRoute("/valorant", renderValorantView);
   registerRoute("/logs", renderLogsView);
   startRouter(viewRoot, navRoot);
 }

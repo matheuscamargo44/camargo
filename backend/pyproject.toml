@@ -1,7 +1,7 @@
 [project]
 name = "camargo"
 version = "0.1.0"
-description = "LCU toolkit for League of Legends - backend service"
+description = "League of Legends (LCU) and VALORANT toolkit - backend service"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115.0",
@@ -9,6 +9,7 @@ dependencies = [
     "psutil==7.1.3",
     "requests==2.32.5",
     "urllib3==2.5.0",
+    "valclient>=2.28",
 ]
 
 [dependency-groups]

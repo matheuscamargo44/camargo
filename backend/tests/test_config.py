@@ -18,7 +18,38 @@ def test_load_config_preserves_existing_values(tmp_path, monkeypatch):
     loaded = config_module.load_config()
 
     assert loaded["auto_accept"]["enabled"] is True
-    assert loaded["instalock"]["champion"] == "None"
+    assert loaded["instalock"]["champions"] == []
+
+
+def test_load_config_migrates_a_legacy_single_champion(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        '{"instalock": {"enabled": true, "champion": "Ahri"}, '
+        '"autoban": {"champion": "Yasuo"}, '
+        '"aram_bench_swap": {"champion": "Teemo"}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "CONFIG_PATH", config_path)
+
+    loaded = config_module.load_config()
+
+    assert loaded["instalock"]["champions"] == ["Ahri"]
+    assert loaded["autoban"]["champions"] == ["Yasuo"]
+    assert loaded["aram_bench_swap"]["champions"] == ["Teemo"]
+
+
+def test_load_config_migration_ignores_none_and_random(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        '{"instalock": {"champion": "None"}, "autoban": {"champion": "Random"}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "CONFIG_PATH", config_path)
+
+    loaded = config_module.load_config()
+
+    assert loaded["instalock"]["champions"] == []
+    assert loaded["autoban"]["champions"] == []
 
 
 def test_get_automation_delay_clamps_range():

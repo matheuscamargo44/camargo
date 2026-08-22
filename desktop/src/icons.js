@@ -65,6 +65,10 @@ const FEATURE_ICON_MAP = {
   remove_friends: "user-minus",
   restart_ux: "rotate-cw",
   chat_toggle: "message-square",
+  valorant_instalock: "crosshair",
+  valorant_dodge: "log-out",
+  valorant_chat_toggle: "message-square",
+  valorant_rank: "award",
 };
 
 /** Map nav routes to icon names */

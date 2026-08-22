@@ -36,19 +36,35 @@ def test_auto_play_again_toggle():
     assert feature.get_status()["enabled"] is True
 
 
-def test_aram_bench_swap_set_champion():
+def test_aram_bench_swap_add_champion():
     lcu = MagicMock()
     lcu.lcu_request.return_value.status_code = 200
     lcu.lcu_request.return_value.json.return_value = [
         {"id": 103, "name": "Ahri"},
     ]
-    config = {"aram_bench_swap": {"enabled": False, "champion": "None"}}
+    config = {"aram_bench_swap": {"enabled": False, "champions": []}}
     feature = AramBenchSwap(lcu, config)
 
-    target = feature.set_champion("Ahri")
-    assert target == "Ahri"
+    target = feature.add_champion("Ahri")
+    assert target == ["Ahri"]
     assert feature.get_status()["enabled"] is True
-    assert feature.get_status()["target_champion"] == "Ahri"
+    assert feature.get_status()["target_champion"] == ["Ahri"]
+
+
+def test_aram_bench_swap_resolve_champion_picks_the_first_one_on_the_bench():
+    lcu = MagicMock()
+    lcu.lcu_request.return_value.status_code = 200
+    lcu.lcu_request.return_value.json.return_value = [
+        {"id": 103, "name": "Ahri"},
+        {"id": 86, "name": "Garen"},
+    ]
+    config = {"aram_bench_swap": {"enabled": True, "champions": ["Ahri", "Garen"]}}
+    feature = AramBenchSwap(lcu, config)
+
+    # Ahri isn't on the bench yet, but Garen is: fall through to Garen.
+    bench = [{"championId": 86}]
+
+    assert feature.resolve_champion(bench) == "Garen"
 
 
 def test_presence_status_set_presence():

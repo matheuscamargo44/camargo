@@ -10,21 +10,22 @@ class Instalock(ThreadedFeature):
     def __init__(self, lcu_client, config, on_event=None):
         super().__init__(lcu_client, config, on_event)
         self.champ_dict = {}
-        self.enabled = bool(self.config.get("instalock", {}).get("enabled"))
-        self.champion = self.config.get("instalock", {}).get("champion", "None")
+        settings = self.config.get("instalock", {})
+        self.enabled = bool(settings.get("enabled"))
+        self.champions = list(settings.get("champions", []))
 
     def get_status(self) -> dict:
         return {
             "key": self.key,
             "enabled": self.enabled,
-            "instalock_champion": self.champion,
+            "instalock_champion": list(self.champions),
         }
 
     def _save_settings(self):
         if "instalock" not in self.config:
             self.config["instalock"] = {}
         self.config["instalock"]["enabled"] = self.enabled
-        self.config["instalock"]["champion"] = self.champion
+        self.config["instalock"]["champions"] = self.champions
         save_config(self.config)
 
     def update_champion_list(self):
@@ -45,20 +46,31 @@ class Instalock(ThreadedFeature):
     def champ_name_to_id(self, champ_name):
         return self.champ_dict.get(champ_name.lower(), -1)
 
-    def set_champion(self, champion_name):
-        if champion_name.lower() == "none":
-            self.champion = "None"
-            self.enabled = False
-        else:
-            if not self.champ_dict:
-                self.update_champion_list()
-            if self.champ_name_to_id(champion_name) == -1:
-                raise ValueError(f"Champion '{champion_name}' was not found")
-            self.champion = champion_name
-            self.enabled = True
+    def add_champion(self, champion_name):
+        """Appends to the priority list (tried in order at lock time)."""
+        if not self.champ_dict:
+            self.update_champion_list()
+        if self.champ_name_to_id(champion_name) == -1:
+            raise ValueError(f"Champion '{champion_name}' was not found")
+
+        normalized = champion_name.lower()
+        if not any(existing.lower() == normalized for existing in self.champions):
+            self.champions.append(champion_name)
+        self.enabled = True
+
         self._save_settings()
-        self.on_event("success", f"Instalock configured for {self.champion}")
-        return self.champion
+        self.on_event("success", f"Instalock: added {champion_name} to the priority list")
+        return list(self.champions)
+
+    def remove_champion(self, champion_name):
+        normalized = champion_name.lower()
+        self.champions = [c for c in self.champions if c.lower() != normalized]
+        if not self.champions:
+            self.enabled = False
+
+        self._save_settings()
+        self.on_event("info", f"Instalock: removed {champion_name} from the priority list")
+        return list(self.champions)
 
     def toggle(self, enable=None):
         if enable is None:
@@ -91,6 +103,30 @@ class Instalock(ThreadedFeature):
                     return action
         return None
 
+    def resolve_champion(self, session, cell_id):
+        """First champion in the priority list that's neither already locked
+        by a teammate nor banned by either team — so a teammate taking your
+        first pick, or it getting banned, falls through to the next one.
+        """
+        unavailable_ids = set()
+        for player in session.get("myTeam", []):
+            if player.get("cellId") == cell_id:
+                continue
+            champ_id = player.get("championId")
+            if champ_id:
+                unavailable_ids.add(champ_id)
+
+        bans = session.get("bans") or {}
+        for ban_list in (bans.get("myTeamBans"), bans.get("theirTeamBans")):
+            for champ_id in ban_list or []:
+                unavailable_ids.add(champ_id)
+
+        for name in self.champions:
+            champ_id = self.champ_name_to_id(name)
+            if champ_id != -1 and champ_id not in unavailable_ids:
+                return name
+        return None
+
     def _loop(self):
         while not self._stop_event.is_set():
             try:
@@ -116,20 +152,20 @@ class Instalock(ThreadedFeature):
 
                 pending = self.find_pending_action(session, cell_id)
                 if pending is not None:
-                    self._lock_champion(pending)
+                    champion_name = self.resolve_champion(session, cell_id)
+                    if champion_name is not None:
+                        self._lock_champion(pending, champion_name)
 
                 self._sleep(0.3)
             except Exception:
                 self._sleep(1)
 
-    def _lock_champion(self, action):
-        if self.champion == "None":
-            return
+    def _lock_champion(self, action, champion_name):
         delay = get_automation_delay(self.config, "instalock", 0.3)
         if delay:
             self._sleep(delay)
 
-        champion_id = self.champ_name_to_id(self.champion)
+        champion_id = self.champ_name_to_id(champion_name)
         if champion_id == -1:
             return
 
@@ -140,5 +176,5 @@ class Instalock(ThreadedFeature):
         )
         if not 200 <= response.status_code < 300:
             raise RuntimeError(f"Could not lock champion (HTTP {response.status_code})")
-        self.on_event("success", f"Locked {self.champion}")
+        self.on_event("success", f"Locked {champion_name}")
         self._sleep(0.3)

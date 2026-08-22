@@ -14,6 +14,7 @@ CHAMPION_SUMMARY = [
     {"id": -1, "name": "None"},
     {"id": 86, "name": "Garen"},
     {"id": 157, "name": "Yasuo"},
+    {"id": 103, "name": "Ahri"},
 ]
 
 
@@ -108,30 +109,135 @@ def test_champion_name_lookup_is_case_insensitive(feature_and_type):
     assert feature.champ_name_to_id("Nobody") == -1
 
 
-def test_setting_an_unknown_champion_is_rejected(feature_and_type):
+def test_adding_an_unknown_champion_is_rejected(feature_and_type):
     feature, _ = feature_and_type
 
     with pytest.raises(ValueError, match="not found"):
-        feature.set_champion("Notachampion")
+        feature.add_champion("Notachampion")
 
 
-def test_setting_none_disables_the_feature(feature_and_type):
+def test_removing_the_last_champion_disables_the_feature(tmp_path, monkeypatch, feature_and_type):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
     feature, _ = feature_and_type
-    feature.enabled = True
+    feature.add_champion("Yasuo")
 
-    assert feature.set_champion("None") == "None"
+    assert feature.remove_champion("Yasuo") == []
     assert feature.enabled is False
 
 
-def test_setting_a_champion_enables_the_feature(feature_and_type, tmp_path, monkeypatch):
+def test_adding_a_champion_enables_the_feature(tmp_path, monkeypatch, feature_and_type):
     import core.config
 
     monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
     feature, _ = feature_and_type
 
-    assert feature.set_champion("Yasuo") == "Yasuo"
+    assert feature.add_champion("Yasuo") == ["Yasuo"]
     assert feature.enabled is True
     assert feature.get_status()["enabled"] is True
+
+
+def test_adding_the_same_champion_twice_does_not_duplicate(tmp_path, monkeypatch, feature_and_type):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature, _ = feature_and_type
+
+    feature.add_champion("Yasuo")
+    feature.add_champion("yasuo")  # case-insensitive dedup
+
+    assert feature.champions == ["Yasuo"]
+
+
+def test_priority_order_is_preserved_across_add_and_remove(tmp_path, monkeypatch, feature_and_type):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature, _ = feature_and_type
+
+    feature.add_champion("Yasuo")
+    feature.add_champion("Garen")
+    feature.add_champion("Ahri")
+    feature.remove_champion("Garen")
+
+    assert feature.champions == ["Yasuo", "Ahri"]
+
+
+def team_session(taken_champ_ids=(), banned_ids=(), cell_id=3):
+    return {
+        "localPlayerCellId": cell_id,
+        "myTeam": [{"cellId": cell_id, "championId": 0}]
+        + [{"cellId": 100 + i, "championId": champ_id} for i, champ_id in enumerate(taken_champ_ids)],
+        "bans": {"myTeamBans": list(banned_ids), "theirTeamBans": []},
+    }
+
+
+def test_instalock_resolve_champion_skips_a_champion_a_teammate_already_has(tmp_path, monkeypatch):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature = Instalock(FakeLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+    feature.add_champion("Yasuo")
+    feature.add_champion("Garen")
+
+    # A teammate already locked Yasuo (id 157): fall through to Garen.
+    session = team_session(taken_champ_ids=[157])
+
+    assert feature.resolve_champion(session, cell_id=3) == "Garen"
+
+
+def test_instalock_resolve_champion_skips_a_banned_champion(tmp_path, monkeypatch):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature = Instalock(FakeLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+    feature.add_champion("Yasuo")
+    feature.add_champion("Garen")
+
+    session = team_session(banned_ids=[157])  # Yasuo banned
+
+    assert feature.resolve_champion(session, cell_id=3) == "Garen"
+
+
+def test_instalock_resolve_champion_returns_none_when_the_whole_list_is_unavailable(tmp_path, monkeypatch):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature = Instalock(FakeLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+    feature.add_champion("Yasuo")
+
+    session = team_session(taken_champ_ids=[157])
+
+    assert feature.resolve_champion(session, cell_id=3) is None
+
+
+def test_autoban_resolve_champion_skips_an_already_banned_champion(tmp_path, monkeypatch):
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature = AutoBan(FakeLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+    feature.add_champion("Yasuo")
+    feature.add_champion("Garen")
+
+    session = {"bans": {"myTeamBans": [], "theirTeamBans": [157]}}  # Yasuo banned by enemy
+
+    assert feature.resolve_champion(session) == "Garen"
+
+
+def test_autoban_resolve_champion_ignores_teammate_picks(tmp_path, monkeypatch):
+    """Unlike Instalock, a teammate locking a champion doesn't stop it from
+    being banned — only an existing ban does.
+    """
+    import core.config
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature = AutoBan(FakeLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+    feature.add_champion("Yasuo")
+
+    session = team_session(taken_champ_ids=[157])  # a teammate has Yasuo, but nothing is banned
+
+    assert feature.resolve_champion(session) == "Yasuo"
 
 
 def test_locking_sends_the_champion_id_to_champ_select(tmp_path, monkeypatch):
@@ -140,9 +246,9 @@ def test_locking_sends_the_champion_id_to_champ_select(tmp_path, monkeypatch):
     monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
     lcu = FakeLCUClient()
     feature = Instalock(lcu, copy.deepcopy(DEFAULT_CONFIG))
-    feature.set_champion("Garen")
+    feature.add_champion("Garen")
 
-    feature._lock_champion({"id": 11})
+    feature._lock_champion({"id": 11}, "Garen")
 
     method, endpoint, body = lcu.calls[-1]
     assert method == "PATCH"
@@ -156,9 +262,9 @@ def test_banning_sends_the_champion_id_to_champ_select(tmp_path, monkeypatch):
     monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
     lcu = FakeLCUClient()
     feature = AutoBan(lcu, copy.deepcopy(DEFAULT_CONFIG))
-    feature.set_champion("Yasuo")
+    feature.add_champion("Yasuo")
 
-    feature._ban_champion({"id": 11})
+    feature._ban_champion({"id": 11}, "Yasuo")
 
     method, endpoint, body = lcu.calls[-1]
     assert method == "PATCH"
@@ -174,7 +280,7 @@ def test_a_rejected_lock_raises(tmp_path, monkeypatch):
         responses={"/lol-champ-select/v1/session/actions/11": FakeResponse(status_code=500)}
     )
     feature = Instalock(lcu, copy.deepcopy(DEFAULT_CONFIG))
-    feature.set_champion("Garen")
+    feature.add_champion("Garen")
 
     with pytest.raises(RuntimeError, match="500"):
-        feature._lock_champion({"id": 11})
+        feature._lock_champion({"id": 11}, "Garen")
