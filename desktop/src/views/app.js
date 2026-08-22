@@ -58,9 +58,14 @@ function captureRendererErrors() {
 }
 
 
-async function bootstrap() {
+function bootstrap() {
   captureRendererErrors();
-  await startPolling();
+  // Fire-and-forget: each screen already shows its own "waiting for the
+  // backend" spinner and redraws itself once data lands (onFeatureMetaUpdate,
+  // onHealthUpdate). Blocking the whole UI behind polling meant a slow
+  // backend start (antivirus scanning a fresh .exe, a stalled League client)
+  // could leave the user staring at the boot screen for a very long time.
+  startPolling();
 
   // Reveal the UI
   hideLoadingScreen();

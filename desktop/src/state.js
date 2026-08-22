@@ -74,12 +74,15 @@ function wait(ms) {
 }
 
 /**
- * Starts polling and resolves only once the backend has actually responded
- * (retrying for a while) so callers can render screens with real feature
- * metadata instead of racing the Electron-spawned backend's startup time.
+ * Starts polling. Callers should not await this — it deliberately never
+ * blocks the caller on the backend actually responding; screens read
+ * whatever's cached (empty at first) and redraw via onFeatureMetaUpdate /
+ * onFeaturesUpdate / onHealthUpdate as real data arrives. Just polls fast
+ * for a bit first, since that's cheap and gets a slow-booting backend's
+ * data on screen sooner.
  */
 export async function startPolling(intervalMs = 4000) {
-  const maxAttempts = 20; // ~20s of retries while the Python backend boots
+  const maxAttempts = 20; // ~20s of fast retries while the Python backend boots
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await pollOnce();
     if (featureMeta.length > 0) break;
