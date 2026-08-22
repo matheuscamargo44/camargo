@@ -98,31 +98,32 @@ def test_auto_honor_prefers_the_duo_partner():
         {"summonerId": 222, "puuid": "duo-puuid-123", "summonerName": "MyDuoPartner"},
     ]
 
-    target, is_duo = feature.pick_honor_target(eligible)
+    target = feature.pick_honor_target(eligible)
 
-    assert is_duo is True
     assert target["summonerName"] == "MyDuoPartner"
 
 
-def test_auto_honor_falls_back_to_the_first_ally():
+def test_auto_honor_skips_when_no_known_party_member_is_eligible():
+    """Guessing at a random teammate isn't "auto honoring your duo" — if the
+    lobby was never seen (e.g. the app started after it formed), there's no
+    reliable way to know who that was, so it should vote for no one.
+    """
     feature = AutoHonor(MagicMock(), {"auto_honor": {"enabled": True}})
 
     eligible = [{"summonerId": 111, "summonerName": "RandomAlly"}]
-    target, is_duo = feature.pick_honor_target(eligible)
+    target = feature.pick_honor_target(eligible)
 
-    assert is_duo is False
-    assert target["summonerName"] == "RandomAlly"
+    assert target is None
 
 
 def test_auto_honor_matches_a_party_member_by_summoner_id():
     feature = AutoHonor(MagicMock(), {"auto_honor": {"enabled": True}})
     feature.party_member_summoner_ids = {222}
 
-    target, is_duo = feature.pick_honor_target(
+    target = feature.pick_honor_target(
         [{"summonerId": 111, "summonerName": "Random"}, {"summonerId": 222, "summonerName": "Duo"}]
     )
 
-    assert is_duo is True
     assert target["summonerName"] == "Duo"
 
 

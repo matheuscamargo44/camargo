@@ -57,7 +57,13 @@ class AutoHonor(ThreadedFeature):
             logger.exception("AutoHonor._update_party_members failed")
 
     def pick_honor_target(self, eligible_players):
-        """Who to honor: a duo/party member if one is eligible, else the first.
+        """The duo/party member to honor, or None if none is eligible.
+
+        Only votes when it's actually your duo/party — /lol-lobby/v2/lobby
+        (where that's read from) only exists pre-game, so if the app wasn't
+        running yet when the lobby formed, there's no way to know who that
+        was. Guessing at a random teammate isn't what "auto" should mean
+        here, so it skips the vote instead.
 
         Lives outside the loop so the choice can be tested without running a
         background thread.
@@ -68,9 +74,9 @@ class AutoHonor(ThreadedFeature):
             if (puuid and puuid in self.party_member_puuids) or (
                 summoner_id and summoner_id in self.party_member_summoner_ids
             ):
-                return player, True
+                return player
 
-        return eligible_players[0], False
+        return None
 
     def _loop(self):
         while not self._stop_event.is_set():
@@ -97,36 +103,43 @@ class AutoHonor(ThreadedFeature):
                     )
 
                     if eligible_players and game_id and game_id != self.last_honored_game_id:
-                        target_player, is_duo = self.pick_honor_target(eligible_players)
+                        target_player = self.pick_honor_target(eligible_players)
 
-                        summoner_id = target_player.get("summonerId")
-                        puuid = target_player.get("puuid")
-                        target_name = (
-                            target_player.get("summonerName")
-                            or target_player.get("gameName")
-                            or target_player.get("championName")
-                            or "Teammate"
-                        )
-
-                        payload = {
-                            "honorType": "HEART",
-                            "honorCategory": "HEART",
-                            "summonerId": summoner_id,
-                            "gameId": game_id,
-                        }
-                        if puuid:
-                            payload["puuid"] = puuid
-
-                        honor_res = self.lcu.lcu_request(
-                            "POST",
-                            "/lol-honor-v2/v1/honor-player",
-                            payload,
-                        )
-                        if honor_res.status_code in (200, 201, 204):
+                        if target_player is None:
+                            # Mark this game as handled either way, so this
+                            # doesn't re-log every 2s until the ballot closes.
                             self.last_honored_game_id = game_id
-                            role_str = "duo partner" if is_duo else "teammate"
-                            self.on_event("success", f"Auto Honor: Voted for {role_str} ({target_name})")
-                            self._sleep(2)
+                            self.on_event(
+                                "info", "Auto Honor: No known duo/party member was eligible, skipped voting"
+                            )
+                        else:
+                            summoner_id = target_player.get("summonerId")
+                            puuid = target_player.get("puuid")
+                            target_name = (
+                                target_player.get("summonerName")
+                                or target_player.get("gameName")
+                                or target_player.get("championName")
+                                or "Teammate"
+                            )
+
+                            payload = {
+                                "honorType": "HEART",
+                                "honorCategory": "HEART",
+                                "summonerId": summoner_id,
+                                "gameId": game_id,
+                            }
+                            if puuid:
+                                payload["puuid"] = puuid
+
+                            honor_res = self.lcu.lcu_request(
+                                "POST",
+                                "/lol-honor-v2/v1/honor-player",
+                                payload,
+                            )
+                            if honor_res.status_code in (200, 201, 204):
+                                self.last_honored_game_id = game_id
+                                self.on_event("success", f"Auto Honor: Voted for duo partner ({target_name})")
+                                self._sleep(2)
             except Exception:
                 logger.exception("AutoHonor._loop failed")
 
