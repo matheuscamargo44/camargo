@@ -20,19 +20,21 @@ class ValorantRank(Feature):
 
     def get_status(self) -> dict:
         if not self.valorant.is_connected():
-            return {"key": self.key, "tier": None, "rr": None}
+            return {"key": self.key, "tier": None, "rr": None, "player_name": "", "player_tag": ""}
 
         try:
             mmr = self.valorant.fetch_mmr()
         except Exception:
             logger.exception("ValorantRank.get_status failed")
-            return {"key": self.key, "tier": None, "rr": None}
+            return {"key": self.key, "tier": None, "rr": None, "player_name": "", "player_tag": ""}
 
         latest = (mmr or {}).get("LatestCompetitiveUpdate") or {}
         return {
             "key": self.key,
             "tier": latest.get("TierAfterUpdate"),
             "rr": latest.get("RankedRatingAfterUpdate"),
+            "player_name": self.valorant.player_name,
+            "player_tag": self.valorant.player_tag,
         }
 
     def get_recent_form(self, count=5) -> list:

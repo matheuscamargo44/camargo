@@ -36,6 +36,8 @@ class FakeValorantClient:
         self.mmr = MMR
         self.competitive_updates = COMPETITIVE_UPDATES
         self.calls = []
+        self.player_name = "camargo"
+        self.player_tag = "amor"
 
     def is_connected(self):
         return self.connected
@@ -54,23 +56,41 @@ def make_feature(connected=True):
     return feature, valorant
 
 
-def test_get_status_reports_current_tier_and_rr():
+def test_get_status_reports_current_tier_rr_and_player_identity():
     feature, _ = make_feature()
 
-    assert feature.get_status() == {"key": "valorant_rank", "tier": 19, "rr": 11}
+    assert feature.get_status() == {
+        "key": "valorant_rank",
+        "tier": 19,
+        "rr": 11,
+        "player_name": "camargo",
+        "player_tag": "amor",
+    }
 
 
 def test_get_status_reports_nothing_when_disconnected():
     feature, _ = make_feature(connected=False)
 
-    assert feature.get_status() == {"key": "valorant_rank", "tier": None, "rr": None}
+    assert feature.get_status() == {
+        "key": "valorant_rank",
+        "tier": None,
+        "rr": None,
+        "player_name": "",
+        "player_tag": "",
+    }
 
 
 def test_get_status_survives_a_fetch_error():
     feature, valorant = make_feature()
     valorant.fetch_mmr = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
 
-    assert feature.get_status() == {"key": "valorant_rank", "tier": None, "rr": None}
+    assert feature.get_status() == {
+        "key": "valorant_rank",
+        "tier": None,
+        "rr": None,
+        "player_name": "",
+        "player_tag": "",
+    }
 
 
 def test_get_recent_form_maps_the_raw_rr_deltas():

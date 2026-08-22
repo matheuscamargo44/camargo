@@ -128,6 +128,10 @@ class ValorantClient:
     def player_name(self):
         return self._client.player_name if self._client else ""
 
+    @property
+    def player_tag(self):
+        return self._client.player_tag if self._client else ""
+
     def _call(self, method_name, *args, **kwargs):
         """Runs a valclient method, retrying once after a forced
         re-activation if the session looks stale (game restarted, the local
