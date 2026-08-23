@@ -27,16 +27,6 @@ const RANKED_DIVISION_OPTIONS = [
   { value: "IV", label: "Division IV" },
 ];
 
-const VALORANT_REGION_OPTIONS = [
-  { value: "auto", label: "Auto-detect" },
-  { value: "na", label: "North America" },
-  { value: "eu", label: "Europe" },
-  { value: "latam", label: "Latin America" },
-  { value: "br", label: "Brazil" },
-  { value: "ap", label: "Asia Pacific" },
-  { value: "kr", label: "Korea" },
-];
-
 // Every feature with a persistent on/off state gets a switch here
 export const FEATURE_TOGGLES = {
   auto_accept: [{ field: "enabled", label: "Enabled", action: null }],
@@ -200,12 +190,6 @@ export const FEATURE_ACTIONS = {
       modalTitle: "Set Instalock Agent",
       allowNone: true,
       paramName: "agent_name",
-    },
-    {
-      label: "Region",
-      action: "set_region",
-      modalTitle: "Set VALORANT Region",
-      fields: [{ name: "region_code", label: "Region", type: "select", options: VALORANT_REGION_OPTIONS }],
     },
     {
       label: "Modes",
