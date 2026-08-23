@@ -50,9 +50,75 @@ def test_ranked_presence_set_tier():
     lcu.is_league_connected.return_value = True
     lcu.lcu_request.return_value.status_code = 200
 
-    feature = RankedPresence(lcu, {})
+    config = {}
+    feature = RankedPresence(lcu, config)
     res = feature.set_tier("CHALLENGER", "I")
     assert res["tier"] == "CHALLENGER"
+    assert feature.get_status()["enabled"] is True
+    # Persisted, so a restart (a fresh instance reading the same config
+    # dict) keeps reapplying it instead of forgetting the spoofed tier.
+    assert config["ranked_presence"] == {"enabled": True, "tier": "CHALLENGER", "division": "I"}
+
+
+def test_ranked_presence_unranked_disables_it():
+    lcu = MagicMock()
+    lcu.is_league_connected.return_value = True
+    lcu.lcu_request.return_value.status_code = 200
+
+    config = {}
+    feature = RankedPresence(lcu, config)
+    feature.set_tier("DIAMOND", "II")
+    feature.set_tier("UNRANKED")
+
+    assert feature.get_status()["enabled"] is False
+    assert config["ranked_presence"]["enabled"] is False
+
+
+def test_ranked_presence_loop_reapplies_while_enabled(monkeypatch):
+    """League periodically republishes the real tier over the spoofed one,
+    so a one-shot write silently drifts back within seconds to minutes -
+    the background loop must keep reasserting it, not just set it once.
+    """
+    import time
+    import features.ranked_presence as ranked_presence_module
+
+    monkeypatch.setattr(ranked_presence_module, "REAPPLY_INTERVAL_SECONDS", 0.05)
+
+    lcu = MagicMock()
+    lcu.is_league_connected.return_value = True
+    lcu.lcu_request.return_value.status_code = 200
+
+    feature = RankedPresence(lcu, {})
+    feature.set_tier("CHALLENGER", "I")
+    call_count_after_set = lcu.lcu_request.call_count
+
+    feature.start()
+    try:
+        time.sleep(0.2)
+    finally:
+        feature.stop()
+
+    assert lcu.lcu_request.call_count > call_count_after_set
+
+
+def test_ranked_presence_loop_does_not_reapply_when_disabled(monkeypatch):
+    import time
+    import features.ranked_presence as ranked_presence_module
+
+    monkeypatch.setattr(ranked_presence_module, "REAPPLY_INTERVAL_SECONDS", 0.05)
+
+    lcu = MagicMock()
+    lcu.is_league_connected.return_value = True
+    lcu.lcu_request.return_value.status_code = 200
+
+    feature = RankedPresence(lcu, {})  # never enabled
+    feature.start()
+    try:
+        time.sleep(0.2)
+    finally:
+        feature.stop()
+
+    lcu.lcu_request.assert_not_called()
 
 
 def test_friend_requests_get_status_and_actions():

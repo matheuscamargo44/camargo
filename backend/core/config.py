@@ -58,6 +58,11 @@ DEFAULT_CONFIG = {
     "random_skin": {
         "enabled": False,
     },
+    "ranked_presence": {
+        "enabled": False,
+        "tier": "",
+        "division": "I",
+    },
     "valorant_instalock": {
         "enabled": False,
         "agent": "None",
