@@ -1,10 +1,12 @@
 """The activity log is the only place a failure becomes visible to the user."""
 import logging
+import logging.handlers
 
 import pytest
 from fastapi.testclient import TestClient
 
 import api.server as server
+import core.activity_log as activity_log_module
 from core.activity_log import ActivityLog
 from core.auth import AUTH_TOKEN, TOKEN_HEADER
 
@@ -123,3 +125,37 @@ def test_clear_empties_the_log(client):
     remaining = client.get("/logs", headers=AUTH).json()["entries"]
     # only the "cleared" note itself
     assert [e["message"] for e in remaining] == ["Activity log cleared"]
+
+
+def test_log_file_dir_uses_appdata_when_frozen(monkeypatch, tmp_path):
+    monkeypatch.setattr(activity_log_module, "is_frozen", lambda: True)
+    monkeypatch.setattr(activity_log_module, "user_data_dir", lambda: tmp_path)
+
+    assert activity_log_module._log_file_dir() == tmp_path / "logs"
+
+
+def test_log_file_dir_next_to_source_in_dev(monkeypatch):
+    monkeypatch.setattr(activity_log_module, "is_frozen", lambda: False)
+
+    expected = activity_log_module.Path(activity_log_module.__file__).resolve().parent.parent / "logs"
+    assert activity_log_module._log_file_dir() == expected
+
+
+def test_file_handler_writes_non_ascii_entries(monkeypatch, tmp_path):
+    """Player/summoner names are frequently non-ASCII (accents, CJK, etc.)."""
+    monkeypatch.setattr(activity_log_module, "_log_file_dir", lambda: tmp_path)
+
+    handler = activity_log_module._build_file_handler()
+    try:
+        handler.emit(make_record("Honrei Camúcci #love3"))
+    finally:
+        handler.close()
+
+    contents = (tmp_path / "camargo.log").read_text(encoding="utf-8")
+    assert "Camúcci #love3" in contents
+
+
+def test_install_attaches_a_rotating_file_handler_and_silences_uvicorn_access():
+    root = logging.getLogger()
+    assert any(isinstance(h, logging.handlers.RotatingFileHandler) for h in root.handlers)
+    assert logging.getLogger("uvicorn.access").level == logging.WARNING

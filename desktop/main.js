@@ -1,100 +1,61 @@
 const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, clipboard } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const crypto = require("crypto");
-const { spawn } = require("child_process");
+const { createBackendManager } = require("./backend-manager");
 
 const ICON_PATH = path.join(__dirname, "build", "icon.png");
+const BACKEND_URL = "http://127.0.0.1:8731";
 
 // Shared secret for the local backend. Generated per run and handed to the
 // Python process through its environment, so a web page cannot call the API
-// on 127.0.0.1 even though the port is reachable from any browser.
+// on 127.0.0.1 even though the port is reachable from any browser. Stable
+// for the whole Electron process lifetime, including across any mid-session
+// respawn - the renderer only ever reads it once (see preload.js), so a
+// respawned backend must keep authenticating with this same value.
 const AUTH_TOKEN = crypto.randomBytes(32).toString("base64url");
 
-let backendProcess = null;
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 
 /**
- * An unclean previous exit (crash, forced task-kill, an installer replacing
- * the app while the old one was still running in the tray) can leave a
- * camargo-backend.exe orphaned and still bound to port 8731. This launch's
- * AUTH_TOKEN is randomly generated and can never match that stale process's
- * token, so every request would get silently rejected — from the renderer
- * this looks exactly like an infinite loading screen with both games
- * reported "Not Detected". The single-instance lock guarantees this is the
- * only camargo process running, so any camargo-backend.exe found here is
- * necessarily stale and safe to kill before starting a fresh, matching one.
+ * A respawn (crash recovery or a hung backend) is otherwise invisible in a
+ * packaged app - there's no console to see it in. Forward a one-line note
+ * through the same /logs/client channel the renderer already uses for its
+ * own errors, so it shows up in the Logs tab and the persistent log file.
+ * If the backend itself is unreachable (why we're respawning in the first
+ * place, or the restart budget is exhausted), fall back to a small file in
+ * Electron's own userData dir so the event still leaves a trace somewhere.
  */
-function killStaleBackend() {
-  return new Promise((resolve) => {
-    if (process.platform !== "win32") {
-      resolve();
-      return;
-    }
-    const killer = spawn("taskkill", ["/IM", "camargo-backend.exe", "/F"], {
-      stdio: "ignore",
-      windowsHide: true,
+async function reportRespawn(reason) {
+  const message = `Backend was restarted automatically: ${reason}`;
+  try {
+    const response = await fetch(`${BACKEND_URL}/logs/client`, {
+      method: "POST",
+      headers: { "X-Camargo-Token": AUTH_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({ level: "WARNING", message, source: "watchdog" }),
     });
-    killer.on("exit", () => resolve());
-    killer.on("error", () => resolve());
-  });
-}
-
-function startBackend() {
-  const backendEnv = { ...process.env, CAMARGO_AUTH_TOKEN: AUTH_TOKEN };
-
-  if (app.isPackaged) {
-    const backendExe = path.join(process.resourcesPath, "backend", "camargo-backend.exe");
-    backendProcess = spawn(backendExe, [], { stdio: "ignore", windowsHide: true, env: backendEnv });
-  } else {
-    const backendDir = path.join(__dirname, "..", "backend");
-    backendProcess = spawn("uv", ["run", "python", "main.py"], {
-      cwd: backendDir,
-      stdio: "inherit",
-      windowsHide: true,
-      env: backendEnv,
-    });
-  }
-
-  backendProcess.on("error", (error) => {
-    console.error("Failed to start backend:", error);
-  });
-
-  backendProcess.on("exit", (code, signal) => {
-    const pid = backendProcess ? backendProcess.pid : null;
-    backendProcess = null;
-    if (!isQuitting) {
-      console.error(`Backend (pid ${pid}) exited unexpectedly: code=${code} signal=${signal}`);
-    }
-  });
-}
-
-/**
- * `child.kill()` only signals the direct child. In development that child is
- * `uv`, so the Python process it spawned survives and keeps port 8731 bound,
- * and the next run silently talks to a stale backend.
- */
-function stopBackend() {
-  if (!backendProcess) return;
-  const { pid } = backendProcess;
-  backendProcess = null;
-  if (!pid) return;
-
-  if (process.platform === "win32") {
-    try {
-      spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
-      return;
-    } catch (error) {
-      console.error("taskkill failed, falling back to kill():", error);
-    }
+    if (response.ok) return;
+  } catch {
+    // backend still unreachable - fall through to the local file below
   }
   try {
-    process.kill(pid);
-  } catch {
-    // already gone
+    const logPath = path.join(app.getPath("userData"), "watchdog.log");
+    fs.appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`);
+  } catch (error) {
+    console.error("Failed to record watchdog event:", error);
   }
 }
+
+const backendManager = createBackendManager({
+  target: app.isPackaged
+    ? { mode: "packaged", exePath: path.join(process.resourcesPath, "backend", "camargo-backend.exe") }
+    : { mode: "dev", cwd: path.join(__dirname, "..", "backend") },
+  authToken: AUTH_TOKEN,
+  backendUrl: BACKEND_URL,
+  onRespawn: reportRespawn,
+});
 
 function createWindow() {
   const startHidden = process.argv.includes("--hidden") || app.getLoginItemSettings().wasOpenedAsHidden;
@@ -218,8 +179,9 @@ if (!gotSingleInstanceLock) {
 
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
-    await killStaleBackend();
-    startBackend();
+    await backendManager.killStale();
+    backendManager.start();
+    backendManager.startWatchdog();
     createWindow();
     createTray();
 
@@ -228,9 +190,9 @@ if (!gotSingleInstanceLock) {
 
   app.on("window-all-closed", () => {});
 
-  app.on("before-quit", () => {
+  app.on("before-quit", async () => {
     isQuitting = true;
-    stopBackend();
+    await backendManager.stop();
   });
 }
 

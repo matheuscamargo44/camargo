@@ -1,5 +1,6 @@
 backend/.venv/
 backend/config.json
+backend/logs/
 backend/__pycache__/
 backend/**/__pycache__/
 backend/.pytest_cache/

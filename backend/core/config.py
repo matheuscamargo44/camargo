@@ -8,22 +8,16 @@ there would be lost each time the user updates the app.
 """
 import copy
 import json
-import os
 import sys
 import threading
 from pathlib import Path
 
-
-def _user_data_dir():
-    appdata = os.environ.get("APPDATA")
-    if appdata:
-        return Path(appdata) / "camargo"
-    return Path.home() / ".config" / "camargo"
+from core.paths import is_frozen, user_data_dir
 
 
 def _config_path():
-    if getattr(sys, "frozen", False):
-        return _user_data_dir() / "config.json"
+    if is_frozen():
+        return user_data_dir() / "config.json"
 
     return Path(__file__).resolve().parent.parent / "config.json"
 
