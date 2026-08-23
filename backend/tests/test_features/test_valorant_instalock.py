@@ -1,6 +1,7 @@
 import copy
 
 import pytest
+from valclient.exceptions import HandshakeError
 
 from core.config import DEFAULT_CONFIG
 from features.valorant_instalock import ValorantInstalock
@@ -27,6 +28,7 @@ class FakeValorantClient:
         self.calls = []
         self.region = None
         self.agent_directory_response = FakeResponse(json_data=AGENT_DIRECTORY)
+        self.custom_game_configs = {"Queues": []}
 
     def set_region(self, region):
         self.region = region
@@ -48,6 +50,9 @@ class FakeValorantClient:
 
     def pregame_lock_character(self, agent_uuid):
         self.calls.append(("lock", agent_uuid))
+
+    def fetch_custom_game_configs(self):
+        return self.custom_game_configs
 
 
 def make_feature():
@@ -195,13 +200,44 @@ def test_lock_agent_does_nothing_without_a_configured_agent():
     assert "match-1" not in feature._seen_matches
 
 
-def test_get_available_queues_is_a_curated_static_list():
-    feature, _, _ = make_feature()
+def test_get_available_queues_filters_to_curated_and_currently_enabled():
+    """Deathmatch and Escalation ("ggteam") assign your agent randomly with
+    no pick step, so they must never appear even if the live client reports
+    them as enabled. A curated-but-disabled queue (a seasonal mode not
+    running right now) must also be excluded - only the intersection of
+    "worth it" and "actually on right now" should reach the picker.
+    """
+    feature, valorant, _ = make_feature()
+    valorant.custom_game_configs = {
+        "Queues": [
+            {"QueueID": "unrated", "Enabled": True},
+            {"QueueID": "competitive", "Enabled": True},
+            {"QueueID": "hurm", "Enabled": True},
+            {"QueueID": "deathmatch", "Enabled": True},
+            {"QueueID": "ggteam", "Enabled": True},
+            {"QueueID": "onefa", "Enabled": False},
+        ]
+    }
 
     queues = feature.get_available_queues()
 
-    assert {"id": "competitive", "name": "Competitive"} in queues
-    assert {"id": "unrated", "name": "Unrated"} in queues
+    assert queues == [
+        {"id": "competitive", "name": "Competitive"},
+        {"id": "hurm", "name": "Team Deathmatch"},
+        {"id": "unrated", "name": "Unrated"},
+    ]
+
+
+def test_get_available_queues_wraps_a_handshake_failure():
+    feature, valorant, _ = make_feature()
+
+    def raise_handshake_error():
+        raise HandshakeError("no session")
+
+    valorant.fetch_custom_game_configs = raise_handshake_error
+
+    with pytest.raises(RuntimeError, match="Could not fetch queue list"):
+        feature.get_available_queues()
 
 
 def test_toggle_mode_adds_and_removes(tmp_path, monkeypatch):

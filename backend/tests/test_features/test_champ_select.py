@@ -301,6 +301,10 @@ def test_get_available_queues_filters_to_curated_currently_enabled_queues(tmp_pa
                 json_data=[
                     # Curated, enabled, visible: kept.
                     {"id": 420, "name": "Ranqueada Solo/Duo", "isRanked": True, "isVisible": True, "isEnabled": True},
+                    {"id": 1750, "name": "Arena 3x6", "isRanked": False, "isVisible": True, "isEnabled": True},
+                    # ARAM has no pick step at all (champion is randomly
+                    # assigned) - excluded even though it's visible and
+                    # enabled; it's simply not in the curated allowlist.
                     {"id": 450, "name": "ARAM", "isRanked": False, "isVisible": True, "isEnabled": True},
                     # Curated but currently toggled off (a rotating mode not
                     # running right now): excluded.
@@ -318,7 +322,7 @@ def test_get_available_queues_filters_to_curated_currently_enabled_queues(tmp_pa
     feature = Instalock(lcu, copy.deepcopy(DEFAULT_CONFIG))
 
     assert feature.get_available_queues() == [
-        {"id": 450, "name": "ARAM", "is_ranked": False},
+        {"id": 1750, "name": "Arena", "is_ranked": False},
         {"id": 420, "name": "Ranked Solo/Duo", "is_ranked": True},
     ]
 

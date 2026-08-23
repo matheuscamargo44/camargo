@@ -10,15 +10,21 @@ from features.base import ThreadedFeature
 #: whatever the LCU happens to return. Rotating entries (Nexus Blitz,
 #: URF) are still filtered by isEnabled below, so they only show up once
 #: Riot actually turns the event on.
+#:
+#: ARAM and its Chaos/Roots variants are deliberately excluded: your
+#: champion is randomly assigned with no pick step at all, so there is
+#: nothing for Instalock to hook into (that's what the separate Aram
+#: bench-swap automation is for). Swiftplay is excluded too, for a more
+#: fundamental reason - it has no live champion-select session whatsoever:
+#: champion/loadout is chosen before queueing, so /lol-champ-select/v1/
+#: session never exists for it. URF and Nexus Blitz both keep real
+#: player-driven pick (and ban) phases, just faster/simultaneous ones, so
+#: they stay valid.
 LEAGUE_QUEUE_LABELS = {
     420: "Ranked Solo/Duo",
     440: "Ranked Flex",
     400: "Normal (Draft Pick)",
-    450: "ARAM",
-    480: "Swiftplay",
     1750: "Arena",
-    2400: "ARAM: Chaos",
-    2450: "ARAM: Chaos (Roots)",
     1300: "Nexus Blitz",
     1900: "URF",
 }

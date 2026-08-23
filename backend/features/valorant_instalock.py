@@ -8,16 +8,20 @@ from features.base import ThreadedFeature
 
 logger = logging.getLogger(__name__)
 
-#: VALORANT has nothing like League's /lol-game-queues/v1/queues to read
-#: this from, so it's a curated list of the queue IDs seen in presence data
-#: (matchPresenceData.queueId) mapped to display names.
+#: Only queues that actually have a pregame agent-select phase belong here.
+#: Deathmatch and Escalation ("ggteam") are deliberately excluded: both
+#: assign your agent randomly with no pick step, so there is nothing for
+#: Instalock to hook into - confirmed against the live client's own
+#: /parties/v1/parties/customgameconfigs (Deathmatch is TeamSize=12/
+#: NumTeams=1, i.e. free-for-all; Escalation cycles weapons, not agents).
+#: "hurm" is Team Deathmatch's internal queue ID - it does have a normal
+#: 20s agent-select phase, unlike plain Deathmatch.
 VALORANT_QUEUE_LABELS = {
     "unrated": "Unrated",
     "competitive": "Competitive",
     "swiftplay": "Swiftplay",
     "spikerush": "Spike Rush",
-    "deathmatch": "Deathmatch",
-    "ggteam": "Escalation",
+    "hurm": "Team Deathmatch",
     "onefa": "Replication",
     "snowball": "Snowball Fight",
 }
@@ -64,7 +68,22 @@ class ValorantInstalock(ThreadedFeature):
         save_config(self.config)
 
     def get_available_queues(self) -> list:
-        return [{"id": queue_id, "name": name} for queue_id, name in VALORANT_QUEUE_LABELS.items()]
+        """Queues currently enabled server-side, limited to the curated
+        VALORANT_QUEUE_LABELS allowlist - so a seasonal mode (Replication,
+        Snowball Fight) only shows up while it's actually running, the same
+        way League's rotating modes do.
+        """
+        try:
+            configs = self.valorant.fetch_custom_game_configs()
+        except (HandshakeError, PhaseError) as exc:
+            raise RuntimeError(f"Could not fetch queue list: {exc}") from exc
+
+        queues = [
+            {"id": queue["QueueID"], "name": VALORANT_QUEUE_LABELS[queue["QueueID"]]}
+            for queue in configs.get("Queues", [])
+            if queue.get("QueueID") in VALORANT_QUEUE_LABELS and queue.get("Enabled")
+        ]
+        return sorted(queues, key=lambda queue: queue["name"])
 
     def toggle_mode(self, queue_id):
         queue_id = str(queue_id)

@@ -200,6 +200,15 @@ class ValorantClient:
     def fetch_player_restrictions(self):
         return self._call("fetch_player_restrictions")
 
+    def fetch_custom_game_configs(self):
+        """Every queue Riot currently has configured, each flagged with
+        whether it's enabled right now — the same data the client's own
+        custom-game screen uses to populate its queue list. Unlike League's
+        LCU, VALORANT has no plain "list all queues" endpoint; this is the
+        closest equivalent.
+        """
+        return self._call("party_fetch_custom_game_configs")
+
     def fetch_agent_directory(self):
         """Public, unauthenticated agent list (name -> uuid, icons, etc).
         Not part of valclient/the Riot API: VALORANT has no local equivalent
