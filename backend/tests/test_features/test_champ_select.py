@@ -286,7 +286,12 @@ def test_a_rejected_lock_raises(tmp_path, monkeypatch):
         feature._lock_champion({"id": 11}, "Garen")
 
 
-def test_get_available_queues_filters_to_visible_queues(tmp_path, monkeypatch):
+def test_get_available_queues_filters_to_curated_currently_enabled_queues(tmp_path, monkeypatch):
+    """/lol-game-queues/v1/queues lists every queue Riot has ever defined -
+    TFT, custom-lobby duplicates, coop-vs-AI, and rotating modes currently
+    toggled off - in the client's own display language. Only a curated,
+    currently-enabled, English-labeled subset should reach the picker.
+    """
     import core.config
 
     monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
@@ -294,10 +299,18 @@ def test_get_available_queues_filters_to_visible_queues(tmp_path, monkeypatch):
         responses={
             "/lol-game-queues/v1/queues": FakeResponse(
                 json_data=[
-                    {"id": 420, "name": "Ranked Solo/Duo", "isRanked": True, "isVisible": True},
-                    {"id": 450, "name": "ARAM", "isRanked": False, "isVisible": True},
-                    {"id": -1, "name": "Custom", "isRanked": False, "isVisible": True},
-                    {"id": 3150, "name": "Hidden URF", "isRanked": False, "isVisible": False},
+                    # Curated, enabled, visible: kept.
+                    {"id": 420, "name": "Ranqueada Solo/Duo", "isRanked": True, "isVisible": True, "isEnabled": True},
+                    {"id": 450, "name": "ARAM", "isRanked": False, "isVisible": True, "isEnabled": True},
+                    # Curated but currently toggled off (a rotating mode not
+                    # running right now): excluded.
+                    {"id": 1900, "name": "URF", "isRanked": False, "isVisible": True, "isEnabled": False},
+                    # Not in the curated allowlist at all (e.g. TFT, a
+                    # custom-lobby duplicate, a coop-vs-AI queue): excluded
+                    # even though it's visible and enabled.
+                    {"id": 1100, "name": "TFT Ranked", "isRanked": True, "isVisible": True, "isEnabled": True},
+                    # Custom-lobby id: excluded (not a real key).
+                    {"id": -1, "name": "Custom", "isRanked": False, "isVisible": True, "isEnabled": True},
                 ]
             )
         }

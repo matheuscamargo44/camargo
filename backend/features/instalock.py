@@ -1,6 +1,28 @@
 from core.config import get_automation_delay, save_config
 from features.base import ThreadedFeature
 
+#: /lol-game-queues/v1/queues lists every queue Riot has ever defined -
+#: TFT, custom-lobby variants, coop-vs-AI, and rotating modes that are
+#: currently toggled off - in the client's own display language. A mode
+#: filter only makes sense for queues a player can actually matchmake
+#: into, so this is a curated allowlist (English names, matching the
+#: fixed VALORANT_QUEUE_LABELS approach) rather than a passthrough of
+#: whatever the LCU happens to return. Rotating entries (Nexus Blitz,
+#: URF) are still filtered by isEnabled below, so they only show up once
+#: Riot actually turns the event on.
+LEAGUE_QUEUE_LABELS = {
+    420: "Ranked Solo/Duo",
+    440: "Ranked Flex",
+    400: "Normal (Draft Pick)",
+    450: "ARAM",
+    480: "Swiftplay",
+    1750: "Arena",
+    2400: "ARAM: Chaos",
+    2450: "ARAM: Chaos (Roots)",
+    1300: "Nexus Blitz",
+    1900: "URF",
+}
+
 
 class Instalock(ThreadedFeature):
     key = "instalock"
@@ -33,21 +55,17 @@ class Instalock(ThreadedFeature):
         save_config(self.config)
 
     def get_available_queues(self) -> list:
-        """Queues the client itself would show a player, straight from the
-        LCU — no hardcoded queue-ID table to keep in sync with Riot's.
+        """Real matchmade PvP queues currently enabled, limited to the
+        curated LEAGUE_QUEUE_LABELS allowlist.
         """
         response = self.lcu.lcu_request("GET", "/lol-game-queues/v1/queues")
         if response.status_code != 200:
             raise RuntimeError(f"Could not fetch queue list (HTTP {response.status_code})")
 
         queues = [
-            {
-                "id": queue["id"],
-                "name": queue.get("name") or queue.get("shortName") or str(queue["id"]),
-                "is_ranked": bool(queue.get("isRanked")),
-            }
+            {"id": queue["id"], "name": LEAGUE_QUEUE_LABELS[queue["id"]], "is_ranked": bool(queue.get("isRanked"))}
             for queue in response.json()
-            if queue.get("isVisible") and queue.get("id", -1) >= 0
+            if queue.get("id") in LEAGUE_QUEUE_LABELS and queue.get("isVisible") and queue.get("isEnabled")
         ]
         return sorted(queues, key=lambda queue: queue["name"])
 
