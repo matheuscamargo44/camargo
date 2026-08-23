@@ -15,6 +15,32 @@ let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 
+/**
+ * An unclean previous exit (crash, forced task-kill, an installer replacing
+ * the app while the old one was still running in the tray) can leave a
+ * camargo-backend.exe orphaned and still bound to port 8731. This launch's
+ * AUTH_TOKEN is randomly generated and can never match that stale process's
+ * token, so every request would get silently rejected — from the renderer
+ * this looks exactly like an infinite loading screen with both games
+ * reported "Not Detected". The single-instance lock guarantees this is the
+ * only camargo process running, so any camargo-backend.exe found here is
+ * necessarily stale and safe to kill before starting a fresh, matching one.
+ */
+function killStaleBackend() {
+  return new Promise((resolve) => {
+    if (process.platform !== "win32") {
+      resolve();
+      return;
+    }
+    const killer = spawn("taskkill", ["/IM", "camargo-backend.exe", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    killer.on("exit", () => resolve());
+    killer.on("error", () => resolve());
+  });
+}
+
 function startBackend() {
   const backendEnv = { ...process.env, CAMARGO_AUTH_TOKEN: AUTH_TOKEN };
 
@@ -190,8 +216,9 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on("second-instance", showWindow);
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
+    await killStaleBackend();
     startBackend();
     createWindow();
     createTray();
