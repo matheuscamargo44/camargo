@@ -35,7 +35,7 @@ export function openTitlePicker({ title = "Choose Challenge Title" } = {}) {
 
     const searchInput = el("input", {
       type: "text",
-      class: "picker-search",
+      class: "icon-picker-search",
       placeholder: "Search titles...",
     });
     box.appendChild(searchInput);

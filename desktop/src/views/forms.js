@@ -101,14 +101,6 @@ export const FEATURE_ACTIONS = {
       confirmOnly: true,
     },
   ],
-  practice_tool: [
-    {
-      label: "Create 5v5 Lobby",
-      action: "create_lobby",
-      modalTitle: "Create 5v5 Practice Tool Lobby with Bots",
-      confirmOnly: true,
-    },
-  ],
   profile_icon: [
     { label: "Choose", action: "change", kind: "icon-picker", iconKind: "profile", modalTitle: "Choose Profile Icon" },
   ],

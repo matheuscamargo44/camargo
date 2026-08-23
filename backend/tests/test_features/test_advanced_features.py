@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock
 from features.friend_requests import FriendRequestsManager
 from features.party_invite import AutoPartyInvite
-from features.practice_tool import PracticeTool5v5
 from features.random_skin import RandomSkinPicker
 from features.ranked_presence import RankedPresence
 from features.titles import ChallengeTitles
@@ -26,16 +25,6 @@ def test_random_skin_toggle():
     assert feature.get_status()["enabled"] is False
     feature.toggle(True)
     assert feature.get_status()["enabled"] is True
-
-
-def test_practice_tool_create_lobby():
-    lcu = MagicMock()
-    lcu.is_league_connected.return_value = True
-    lcu.lcu_request.return_value.status_code = 200
-
-    feature = PracticeTool5v5(lcu, {})
-    res = feature.create_lobby()
-    assert res["bots_added"] >= 1
 
 
 def test_challenge_titles_get_titles_and_set():

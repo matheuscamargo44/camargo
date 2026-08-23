@@ -87,7 +87,6 @@ const FEATURE_DESCRIPTIONS = {
   auto_play_again: "Auto-starts queue in lobby and after matches",
   auto_honor: "Honors teammate automatically post-game",
   random_skin: "Equips random owned skin on champion lock",
-  practice_tool: "Custom 5v5 practice match with bots",
   dodge: "Leaves champion select immediately",
   chat_toggle: "Deceive mode (appear offline to friends)",
   restart_ux: "Reloads client interface without restarting",

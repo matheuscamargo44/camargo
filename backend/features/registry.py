@@ -18,7 +18,6 @@ from features.instalock import Instalock
 from features.autoban import AutoBan
 from features.loot import MassDisenchant
 from features.party_invite import AutoPartyInvite
-from features.practice_tool import PracticeTool5v5
 from features.presence_status import PresenceStatus
 from features.random_skin import RandomSkinPicker
 from features.ranked_presence import RankedPresence
@@ -40,7 +39,6 @@ FEATURE_CLASSES = [
     Dodge,
     AramBenchSwap,
     RandomSkinPicker,
-    PracticeTool5v5,
     # Customization
     Background,
     ProfileIcon,
