@@ -20,6 +20,9 @@ class FakeLCUClient:
         self.calls.append((method, endpoint, body))
         return self.next_response
 
+    def is_league_connected(self):
+        return True
+
 
 def make_feature():
     import copy
@@ -60,3 +63,35 @@ def test_accept_match_raises_on_error_status():
         assert False, "expected RuntimeError"
     except RuntimeError:
         pass
+
+
+def test_repeated_accept_failures_back_off_and_warn_once(monkeypatch):
+    """A ready check that keeps failing to accept (already invalidated
+    server-side, or a desynced client) must not be retried at full 0.5s
+    cadence forever - that just floods the log without ever succeeding.
+    """
+    import time
+    import features.auto_accept as auto_accept_module
+
+    monkeypatch.setattr(auto_accept_module, "ACCEPT_FAILURE_BACKOFF_SECONDS", 0.05)
+    monkeypatch.setattr(auto_accept_module, "ACCEPT_FAILURE_WARN_THRESHOLD", 3)
+
+    feature, lcu, events = make_feature()
+    feature.enabled = True
+
+    def route(method, endpoint, body=""):
+        if endpoint == "/lol-lobby/v2/lobby/matchmaking/search-state":
+            return FakeResponse(status_code=200, json_data={"searchState": "Found"})
+        return FakeResponse(status_code=500)
+
+    lcu.lcu_request = route
+
+    feature.start()
+    try:
+        time.sleep(0.3)
+    finally:
+        feature.stop()
+
+    warn_events = [e for e in events if e[0] == "warn"]
+    assert len(warn_events) == 1
+    assert feature._consecutive_accept_failures >= 3
