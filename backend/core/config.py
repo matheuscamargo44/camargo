@@ -31,6 +31,7 @@ DEFAULT_CONFIG = {
         "champions": [],
         "delay_seconds": 0.3,
         "modes": [],
+        "smart_counter_pick": False,
     },
     "autoban": {
         "enabled": False,

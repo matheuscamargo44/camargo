@@ -36,7 +36,10 @@ export const FEATURE_TOGGLES = {
   aram_bench_swap: [{ field: "enabled", label: "Enabled", action: null }],
   random_skin: [{ field: "enabled", label: "Enabled", action: null }],
   chat_toggle: [{ field: "disconnected", label: "Chat Connected", action: null, invert: true }],
-  instalock: [{ field: "enabled", label: "Enabled", action: null }],
+  instalock: [
+    { field: "enabled", label: "Enabled", action: null },
+    { field: "smart_counter_pick", label: "Smart Counter-Pick (OP.GG)", action: "toggle_smart_counter_pick" },
+  ],
   autoban: [{ field: "enabled", label: "Enabled", action: null }],
   valorant_instalock: [{ field: "enabled", label: "Enabled", action: null }],
   valorant_chat_toggle: [{ field: "disconnected", label: "Chat Connected", action: null, invert: true }],

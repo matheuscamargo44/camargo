@@ -212,6 +212,117 @@ def test_instalock_resolve_champion_returns_none_when_the_whole_list_is_unavaila
     assert feature.resolve_champion(session, cell_id=3) is None
 
 
+def lane_session(enemy_champion_id, my_position="TOP", enemy_position="TOP", cell_id=3):
+    return {
+        "localPlayerCellId": cell_id,
+        "myTeam": [{"cellId": cell_id, "championId": 0, "assignedPosition": my_position}],
+        "theirTeam": [{"cellId": 200, "championId": enemy_champion_id, "assignedPosition": enemy_position}],
+        "bans": {"myTeamBans": [], "theirTeamBans": []},
+    }
+
+
+def _must_not_be_called(*args, **kwargs):
+    raise AssertionError("opgg_client.get_lane_matchup should not have been called")
+
+
+def test_smart_counter_pick_promotes_a_favorable_matchup_over_default_order(tmp_path, monkeypatch):
+    import core.config
+    import features.instalock as instalock_module
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature = Instalock(FakeLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+    feature.add_champion("Garen")
+    feature.add_champion("Yasuo")
+    feature.smart_counter_pick = True
+
+    def fake_get_lane_matchup(my_champion, opponent_champion, position):
+        favored = "Yasuo" if my_champion == "Yasuo" else "Ahri"
+        return {"lane_advantage_champion": favored, "recommended_play_style": "aggressive", "opponent_champion_tip": ""}
+
+    monkeypatch.setattr(instalock_module.opgg_client, "get_lane_matchup", fake_get_lane_matchup)
+
+    session = lane_session(enemy_champion_id=103)  # Ahri, locked top - Garen loses that matchup
+
+    assert feature.resolve_champion(session, cell_id=3) == "Yasuo"
+
+
+def test_smart_counter_pick_does_nothing_when_disabled(tmp_path, monkeypatch):
+    import core.config
+    import features.instalock as instalock_module
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature = Instalock(FakeLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+    feature.add_champion("Garen")
+    feature.add_champion("Yasuo")
+    feature.smart_counter_pick = False
+    monkeypatch.setattr(instalock_module.opgg_client, "get_lane_matchup", _must_not_be_called)
+
+    session = lane_session(enemy_champion_id=103)
+
+    assert feature.resolve_champion(session, cell_id=3) == "Garen"
+
+
+def test_smart_counter_pick_does_nothing_before_the_enemy_laner_locks(tmp_path, monkeypatch):
+    import core.config
+    import features.instalock as instalock_module
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature = Instalock(FakeLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+    feature.add_champion("Garen")
+    feature.smart_counter_pick = True
+    monkeypatch.setattr(instalock_module.opgg_client, "get_lane_matchup", _must_not_be_called)
+
+    session = lane_session(enemy_champion_id=0)  # not locked yet
+
+    assert feature.resolve_champion(session, cell_id=3) == "Garen"
+
+
+def test_smart_counter_pick_falls_back_silently_when_opgg_fails(tmp_path, monkeypatch):
+    import core.config
+    import features.instalock as instalock_module
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature = Instalock(FakeLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+    feature.add_champion("Garen")
+    feature.add_champion("Yasuo")
+    feature.smart_counter_pick = True
+
+    def raise_error(*args, **kwargs):
+        raise RuntimeError("OP.GG unreachable")
+
+    monkeypatch.setattr(instalock_module.opgg_client, "get_lane_matchup", raise_error)
+
+    session = lane_session(enemy_champion_id=103)
+
+    # A failed lookup must never block locking - falls back to the plain,
+    # already-existing priority order.
+    assert feature.resolve_champion(session, cell_id=3) == "Garen"
+
+
+def test_smart_counter_pick_caches_the_matchup_per_champion_pair(tmp_path, monkeypatch):
+    import core.config
+    import features.instalock as instalock_module
+
+    monkeypatch.setattr(core.config, "CONFIG_PATH", tmp_path / "config.json")
+    feature = Instalock(FakeLCUClient(), copy.deepcopy(DEFAULT_CONFIG))
+    feature.add_champion("Garen")
+    feature.smart_counter_pick = True
+
+    calls = []
+
+    def fake_get_lane_matchup(my_champion, opponent_champion, position):
+        calls.append((my_champion, opponent_champion, position))
+        return {"lane_advantage_champion": "Garen", "recommended_play_style": "aggressive", "opponent_champion_tip": ""}
+
+    monkeypatch.setattr(instalock_module.opgg_client, "get_lane_matchup", fake_get_lane_matchup)
+
+    session = lane_session(enemy_champion_id=103)
+    feature.resolve_champion(session, cell_id=3)
+    feature.resolve_champion(session, cell_id=3)
+
+    assert len(calls) == 1
+
+
 def test_autoban_resolve_champion_skips_an_already_banned_champion(tmp_path, monkeypatch):
     import core.config
 

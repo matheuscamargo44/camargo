@@ -1,5 +1,24 @@
+import logging
+
 from core.config import get_automation_delay, save_config
+from core.opgg_client import opgg_client, to_opgg_champion_key
 from features.base import ThreadedFeature
+
+logger = logging.getLogger(__name__)
+
+#: LCU's own role names -> OP.GG's lane_matchup_guide position enum.
+POSITION_MAP = {
+    "TOP": "top",
+    "JUNGLE": "jungle",
+    "MIDDLE": "mid",
+    "BOTTOM": "adc",
+    "UTILITY": "support",
+}
+
+#: Only check OP.GG for the first few still-available priority-list
+#: entries, not the whole list - one bad matchup shouldn't mean querying
+#: every remaining champion the user configured.
+MAX_SMART_PICK_CANDIDATES = 3
 
 #: /lol-game-queues/v1/queues lists every queue Riot has ever defined -
 #: TFT, custom-lobby variants, coop-vs-AI, and rotating modes that are
@@ -38,11 +57,16 @@ class Instalock(ThreadedFeature):
     def __init__(self, lcu_client, config, on_event=None):
         super().__init__(lcu_client, config, on_event)
         self.champ_dict = {}
+        self.champ_id_to_name = {}
         settings = self.config.get("instalock", {})
         self.enabled = bool(settings.get("enabled"))
         self.champions = list(settings.get("champions", []))
         #: Allowed queue IDs (from /lol-game-queues/v1/queues); empty = all.
         self.modes = list(settings.get("modes", []))
+        self.smart_counter_pick = bool(settings.get("smart_counter_pick", False))
+        #: (my_champ_id, enemy_champ_id) -> bool, so a repeated matchup this
+        #: session doesn't cost another OP.GG round trip.
+        self._matchup_cache = {}
 
     def get_status(self) -> dict:
         return {
@@ -50,6 +74,7 @@ class Instalock(ThreadedFeature):
             "enabled": self.enabled,
             "instalock_champion": list(self.champions),
             "modes": list(self.modes),
+            "smart_counter_pick": self.smart_counter_pick,
         }
 
     def _save_settings(self):
@@ -58,7 +83,18 @@ class Instalock(ThreadedFeature):
         self.config["instalock"]["enabled"] = self.enabled
         self.config["instalock"]["champions"] = self.champions
         self.config["instalock"]["modes"] = self.modes
+        self.config["instalock"]["smart_counter_pick"] = self.smart_counter_pick
         save_config(self.config)
+
+    def toggle_smart_counter_pick(self, enable=None):
+        if enable is None:
+            self.smart_counter_pick = not self.smart_counter_pick
+        else:
+            self.smart_counter_pick = bool(enable)
+        self._save_settings()
+        state = "enabled" if self.smart_counter_pick else "disabled"
+        self.on_event("info", f"Instalock smart counter-pick {state}")
+        return self.smart_counter_pick
 
     def get_available_queues(self) -> list:
         """Real matchmade PvP queues currently enabled, limited to the
@@ -113,6 +149,7 @@ class Instalock(ThreadedFeature):
                 current_id = self.champ_dict.get(normalized_name)
                 if current_id is None or champ_id < current_id:
                     self.champ_dict[normalized_name] = champ_id
+                self.champ_id_to_name[champ_id] = champ_name
         return sorted(self.champ_dict)
 
     def champ_name_to_id(self, champ_name):
@@ -179,6 +216,11 @@ class Instalock(ThreadedFeature):
         """First champion in the priority list that's neither already locked
         by a teammate nor banned by either team — so a teammate taking your
         first pick, or it getting banned, falls through to the next one.
+
+        When smart_counter_pick is on and the enemy laner has already
+        locked, a still-available entry further down the list is promoted
+        ahead of this default order if OP.GG says it has the lane
+        advantage — see `_smart_counter_pick`.
         """
         unavailable_ids = set()
         for player in session.get("myTeam", []):
@@ -193,9 +235,78 @@ class Instalock(ThreadedFeature):
             for champ_id in ban_list or []:
                 unavailable_ids.add(champ_id)
 
-        for name in self.champions:
-            champ_id = self.champ_name_to_id(name)
-            if champ_id != -1 and champ_id not in unavailable_ids:
+        available = [
+            (name, champ_id)
+            for name in self.champions
+            for champ_id in [self.champ_name_to_id(name)]
+            if champ_id != -1 and champ_id not in unavailable_ids
+        ]
+        if not available:
+            return None
+
+        promoted = self._smart_counter_pick(session, cell_id, available)
+        return promoted if promoted is not None else available[0][0]
+
+    def _enemy_lane_champion_id(self, session, cell_id):
+        """The enemy player's locked champion id in the same assigned
+        position as the local player, or None if that can't be determined
+        yet (no role structure this mode, or they haven't locked). Pure/no
+        I/O - safe to call every loop tick.
+        """
+        my_position = None
+        for player in session.get("myTeam", []):
+            if player.get("cellId") == cell_id:
+                my_position = player.get("assignedPosition")
+                break
+        if not my_position:
+            return None
+
+        for player in session.get("theirTeam", []):
+            if player.get("assignedPosition") == my_position:
+                return player.get("championId") or None
+        return None
+
+    def _smart_counter_pick(self, session, cell_id, available):
+        """Checks, in priority-list order, whether a still-available
+        champion has the lane advantage over the enemy laner - stops at
+        the first one OP.GG confirms, so a good #1 pick never gets
+        second-guessed. Any failure (offline, rate-limited, unknown
+        champion key) is swallowed here: the caller falls back to the
+        existing static-order behavior, exactly as if this were off.
+        """
+        if not self.smart_counter_pick:
+            return None
+
+        enemy_champ_id = self._enemy_lane_champion_id(session, cell_id)
+        if enemy_champ_id is None:
+            return None
+        enemy_name = self.champ_id_to_name.get(enemy_champ_id)
+        if enemy_name is None:
+            return None
+
+        position = None
+        for player in session.get("myTeam", []):
+            if player.get("cellId") == cell_id:
+                position = POSITION_MAP.get(player.get("assignedPosition"))
+                break
+        if position is None:
+            return None
+
+        for name, champ_id in available[:MAX_SMART_PICK_CANDIDATES]:
+            cache_key = (champ_id, enemy_champ_id)
+            favored = self._matchup_cache.get(cache_key)
+            if favored is None:
+                try:
+                    matchup = opgg_client.get_lane_matchup(name, enemy_name, position)
+                except Exception:
+                    logger.exception("Instalock smart counter-pick lookup failed")
+                    continue
+                advantage = matchup.get("lane_advantage_champion") or ""
+                favored = to_opgg_champion_key(advantage) == to_opgg_champion_key(name)
+                self._matchup_cache[cache_key] = favored
+            if favored:
+                if name != available[0][0]:
+                    self.on_event("info", f"Instalock: promoting {name} - better matchup vs {enemy_name}")
                 return name
         return None
 
