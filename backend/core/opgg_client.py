@@ -38,6 +38,101 @@ def to_opgg_champion_key(display_name: str) -> str:
     return _SEPARATOR_CHARS.sub("_", stripped).strip("_").upper()
 
 
+#: Tools called with `desired_output_fields` (e.g. `lol_list_aram_augments`)
+#: don't return plain JSON - they return a compact pseudo-Python "class
+#: repr" text instead, e.g.:
+#:   class Data: augments
+#:   class Augment: id,name,tier,performance
+#:
+#:   LolListAramAugments(Data([Augment(2132,"Warlock Juicebox",3,79.89), ...]))
+#: Confirmed live this session: `lol_get_lane_matchup_guide` (no
+#: `desired_output_fields` in its schema at all) returns real JSON, but
+#: `lol_list_aram_augments` and `lol_get_champion_analysis` (both of which
+#: accept `desired_output_fields`) return this instead. Parsed here into
+#: plain dicts/lists so callers never need to know which format came back.
+_CLASS_DECL_RE = re.compile(r"^class (\w+): (.+)$")
+_TOKEN_RE = re.compile(r'"(?:[^"\\]|\\.)*"|-?\d+\.\d+|-?\d+|[A-Za-z_]\w*|[\[\]\(\),]')
+
+
+def _unescape_class_repr_string(token):
+    return token[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+
+
+def _parse_class_repr(text):
+    lines = text.splitlines()
+    class_fields = {}
+    expr_start = len(lines)
+    for i, line in enumerate(lines):
+        match = _CLASS_DECL_RE.match(line)
+        if not match:
+            expr_start = i
+            break
+        class_fields[match.group(1)] = [f.strip() for f in match.group(2).split(",")]
+
+    tokens = _TOKEN_RE.findall("\n".join(lines[expr_start:]).strip())
+    pos = 0
+
+    def peek():
+        return tokens[pos] if pos < len(tokens) else None
+
+    def consume(expected=None):
+        nonlocal pos
+        token = tokens[pos]
+        if expected is not None and token != expected:
+            raise ValueError(f"expected {expected!r}, got {token!r}")
+        pos += 1
+        return token
+
+    def parse_value():
+        token = peek()
+        if token is None:
+            raise ValueError("unexpected end of OP.GG class-repr response")
+        if token.startswith('"'):
+            return _unescape_class_repr_string(consume())
+        if token == "[":
+            consume("[")
+            items = []
+            if peek() != "]":
+                items.append(parse_value())
+                while peek() == ",":
+                    consume(",")
+                    items.append(parse_value())
+            consume("]")
+            return items
+        if token in ("True", "False", "true", "false"):
+            return consume().lower() == "true"
+        if token in ("None", "null"):
+            consume()
+            return None
+        if re.fullmatch(r"-?\d+\.\d+", token):
+            return float(consume())
+        if re.fullmatch(r"-?\d+", token):
+            return int(consume())
+        # Otherwise it's a class name: IDENT "(" args... ")"
+        class_name = consume()
+        consume("(")
+        args = []
+        if peek() != ")":
+            args.append(parse_value())
+            while peek() == ",":
+                consume(",")
+                args.append(parse_value())
+        consume(")")
+        fields = class_fields.get(class_name)
+        if fields is None:
+            return args
+        return dict(zip(fields, args))
+
+    return parse_value()
+
+
+def _parse_tool_result_text(text):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return _parse_class_repr(text)
+
+
 class OpggMcpError(Exception):
     """The MCP server responded, but with a JSON-RPC error (e.g. an
     invalid champion/position combination), not a transport failure."""
@@ -93,7 +188,7 @@ class OpggClient:
             raise OpggMcpError(envelope["error"].get("message", "OP.GG MCP call failed"))
 
         text = envelope["result"]["content"][0]["text"]
-        return json.loads(text)
+        return _parse_tool_result_text(text)
 
     def _call_tool(self, name, arguments):
         """Runs an MCP tool call, re-initializing the session once if it
@@ -112,6 +207,24 @@ class OpggClient:
                 self._session_id = None
                 self._initialize()
                 return self._call_tool_once(name, arguments)
+
+    def get_aram_augments(self, champion_id, lang="en_US"):
+        """Tier/performance data per augment for `champion_id` (Riot's
+        numeric champion id) in ARAM. Only tier-3+ augments come back with
+        data - an augment id missing from the returned dict means "no tier
+        data", not an error; callers must treat it that way rather than
+        indexing directly.
+        """
+        result = self._call_tool(
+            "lol_list_aram_augments",
+            {
+                "champion_id": champion_id,
+                "lang": lang,
+                "desired_output_fields": ["data.augments[].{id,name,tier,performance}"],
+            },
+        )
+        augments = result.get("data", {}).get("augments", [])
+        return {augment["id"]: augment for augment in augments}
 
     def get_lane_matchup(self, my_champion_name, opponent_champion_name, position):
         """Lane matchup guidance for `my_champion_name` versus

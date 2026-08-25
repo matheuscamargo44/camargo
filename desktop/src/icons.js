@@ -46,6 +46,7 @@ const FEATURE_ICON_MAP = {
   auto_honor: "heart",
   auto_party_invite: "user-plus",
   aram_bench_swap: "shuffle",
+  aram_augment_advisor: "sparkles",
   random_skin: "dices",
   instalock: "crosshair",
   autoban: "shield",

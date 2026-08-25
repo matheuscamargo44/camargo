@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, clipboard } = require("electron");
+const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, clipboard, screen } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
@@ -16,6 +16,7 @@ const BACKEND_URL = "http://127.0.0.1:8731";
 const AUTH_TOKEN = crypto.randomBytes(32).toString("base64url");
 
 let mainWindow = null;
+let overlayWindow = null;
 let tray = null;
 let isQuitting = false;
 
@@ -104,6 +105,40 @@ function createWindow() {
   });
 }
 
+// Second, always-on-top, click-through, transparent window for the ARAM
+// Augments badges (see aram-overlay-controller.js). Kept hidden with an
+// empty render until there is something to show - never steals focus or
+// blocks a click meant for the game underneath it.
+function createOverlayWindow() {
+  const { bounds } = screen.getPrimaryDisplay();
+
+  overlayWindow = new BrowserWindow({
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    resizable: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "overlay-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+  // "screen-saver" level is what lets this sit above a borderless-fullscreen
+  // game window - the default always-on-top level does not.
+  overlayWindow.setAlwaysOnTop(true, "screen-saver");
+  overlayWindow.loadFile(path.join(__dirname, "src", "overlay.html"));
+}
+
 function showWindow() {
   if (!mainWindow) {
     createWindow();
@@ -171,6 +206,19 @@ ipcMain.handle("camargo:copy-text", (_event, text) => {
   return true;
 });
 
+// The renderer already polls the backend for the current recommendation
+// (see aram-overlay-controller.js) - these just relay "here's what to show
+// right now" to the overlay window, which never fetches anything itself.
+ipcMain.on("camargo:aram-overlay-show", (_event, payload) => {
+  if (!overlayWindow) return;
+  overlayWindow.webContents.send("camargo:aram-overlay-render", payload);
+  if (!overlayWindow.isVisible()) overlayWindow.showInactive();
+});
+
+ipcMain.on("camargo:aram-overlay-hide", () => {
+  if (overlayWindow) overlayWindow.hide();
+});
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -183,6 +231,7 @@ if (!gotSingleInstanceLock) {
     backendManager.start();
     backendManager.startWatchdog();
     createWindow();
+    createOverlayWindow();
     createTray();
 
     app.on("activate", showWindow);

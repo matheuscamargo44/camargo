@@ -170,6 +170,19 @@ def list_features_meta():
     ]
 
 
+@app.get("/features/{key}")
+def get_feature_status(key: str):
+    """A narrow, single-feature poll target - used by features whose
+    status needs polling faster than the bulk /features response can
+    afford (e.g. aram_augment_advisor, which must catch a several-second
+    on-screen pick window)."""
+    try:
+        feature = registry.get(key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return feature.get_status()
+
+
 def _require_connected(feature):
     if registry.is_connected(feature):
         return

@@ -49,6 +49,9 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "champions": [],
     },
+    "aram_augment_advisor": {
+        "enabled": False,
+    },
     "auto_honor": {
         "enabled": False,
     },

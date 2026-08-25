@@ -1,0 +1,263 @@
+# Spec — Instalock Smart Counter-Pick (OP.GG) + ARAM: Desordem augment overlay
+
+Status as of **2026-08-24**. Part A shipped in v0.9.0; Part B is implemented and awaiting a live run.
+This doc exists so a future session (or a compacted version of this one) doesn't have to re-derive the
+empirically-verified facts below from scratch — including the approaches that were tried and **failed**,
+which are the expensive part to rediscover.
+
+## Origin
+
+User asked to "connect the Instalock to Blitz" for pick suggestions. Investigated: Blitz exposes no
+local port and no public API (confirmed live — checked every Blitz.exe process on the user's machine,
+zero listening ports). Reverse-engineering their private cloud API was explicitly ruled out (ToS risk,
+fragile, not a real integration). Pivoted to OP.GG, which **officially publishes** an MCP server for
+this exact purpose.
+
+## Part A — Shipped in v0.9.0
+
+**What it does**: opt-in toggle on the Instalock card ("Smart Counter-Pick (OP.GG)", off by default).
+When the enemy player in the same lane has locked their champion, Instalock checks OP.GG's lane-matchup
+data for the user's own priority list (top 3 entries, in list order) and promotes the first one with a
+confirmed lane advantage. Never introduces a champion outside the user's list. Any OP.GG failure
+(offline, rate-limited, unknown champion key) silently falls back to the existing static-order behavior
+— this was a hard requirement, not a nice-to-have.
+
+### Data source — OP.GG's official MCP server
+
+- Endpoint: `https://mcp-api.op.gg/mcp`. Published by OP.GG themselves at `github.com/opgginc/opgg-mcp`
+  (MIT license, org account belongs to the company). No API key. No documented rate limit.
+- Protocol: MCP "Streamable HTTP" transport = JSON-RPC 2.0 over HTTP POST.
+  1. `POST {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{...}}}`
+     → response header `Mcp-Session-Id: <uuid>` must be captured and echoed on every subsequent call.
+  2. `POST {"jsonrpc":"2.0","method":"notifications/initialized"}` (required by MCP spec, no response body needed).
+  3. `POST {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lol_get_lane_matchup_guide","arguments":{"position":"top","my_champion":"GAREN","opponent_champion":"DARIUS"}}}`
+     → `result.content[0].text` is a **JSON string** (needs a second `json.loads`), containing
+     `data.lane_advantage_champion`, `data.recommended_play_style`, `data.opponent_champion_tip`, plus a
+     lot of unrelated data (items, runes, general tier stats) that we discard.
+- Full tool catalog has 30 tools (`tools/list`), including a fallback tier-list tool
+  (`lol_list_lane_meta_champions`) not currently used, and `lol_list_aram_augments` (relevant to Part B).
+
+### Champion-name normalization — fully verified empirically, no exceptions found
+
+OP.GG wants `UPPER_SNAKE_CASE` champion keys. **These do NOT reliably match Riot's own internal `alias`
+field** from `champion-summary.json` (e.g. Wukong's alias is `MonkeyKing`, Renata Glasc's is `Renata` —
+both rejected by OP.GG). The rule that *does* work, derived from Riot's **display name** (`champ["name"]`,
+the same field `Instalock.champ_dict` is already built from):
+
+```
+uppercase → strip "'" and "." → replace runs of whitespace/"&" with "_" → strip leading/trailing "_"
+```
+
+Verified live against the real endpoint, 13/13 correct, zero exceptions:
+
+| Display name | OP.GG key | Display name | OP.GG key |
+|---|---|---|---|
+| Kai'Sa | `KAISA` | Dr. Mundo | `DR_MUNDO` |
+| Vel'Koz | `VELKOZ` | Tahm Kench | `TAHM_KENCH` |
+| Rek'Sai | `REKSAI` | Renata Glasc | `RENATA_GLASC` |
+| Bel'Veth | `BELVETH` | Nunu & Willump | `NUNU_WILLUMP` |
+| Kog'Maw | `KOGMAW` | Wukong | `WUKONG` |
+| Cho'Gath | `CHOGATH` | Mel | `MEL` |
+| Garen | `GAREN` | | |
+
+Implemented as `to_opgg_champion_key()` in `backend/core/opgg_client.py`, unit-tested against this exact
+table in `backend/tests/test_opgg_client.py`.
+
+### Code
+
+- **`backend/core/opgg_client.py`** (new) — `OpggClient`: owns the MCP session id, `_initialize()` does
+  the 2-step handshake, `_call_tool()` retries once with a fresh session on any non-`OpggMcpError`
+  failure (an `OpggMcpError` means the server understood and actively rejected the request — e.g. bad
+  champion key — retrying won't help, so it's not treated as a stale-session signal). No TTL/background
+  thread (unlike `ValorantClient`) — there's no "process restarted" trigger here, purely on-demand.
+  Module-level singleton `opgg_client`, imported directly by `instalock.py` (deliberately **not** wired
+  into `FeatureRegistry`'s per-feature client injection — single consumer today, not worth extending that
+  mechanism yet).
+- **`backend/features/instalock.py`**:
+  - `champ_id_to_name` dict added alongside the existing `champ_dict` (name→id), built in the same
+    `update_champion_list()` pass — needed to turn the enemy's `championId` back into a display name for
+    the OP.GG call.
+  - `_enemy_lane_champion_id(session, cell_id)` — pure, no I/O: finds the local player's
+    `assignedPosition` in `myTeam`, finds the `theirTeam` entry with the same position, returns its
+    `championId` (or `None` if not locked / no role structure).
+  - `POSITION_MAP` — LCU's `TOP/JUNGLE/MIDDLE/BOTTOM/UTILITY` → OP.GG's `top/mid/jungle/adc/support`.
+  - `_smart_counter_pick(session, cell_id, available)` — the reactive logic; caches by
+    `(my_champ_id, enemy_champ_id)` in `self._matchup_cache` (self-invalidates on a new enemy pick since
+    the enemy id is part of the key; never explicitly cleared — bounded in practice, matches the existing
+    unbounded `champ_dict` pattern).
+  - `resolve_champion()` calls `_smart_counter_pick()` as a pre-step; if it returns `None` (disabled, no
+    enemy lock yet, or nothing favorable found among the top 3), falls through to the original
+    first-available-in-list behavior — completely unchanged for anyone who leaves the toggle off.
+  - New config key `DEFAULT_CONFIG["instalock"]["smart_counter_pick"]` (bool, default `False`).
+  - New action `toggle_smart_counter_pick(enable=None)`, mirrors the existing `toggle()` shape.
+- **`desktop/src/views/forms.js`** — `FEATURE_TOGGLES.instalock` gained a second toggle entry
+  (`{ field: "smart_counter_pick", label: "Smart Counter-Pick (OP.GG)", action: "toggle_smart_counter_pick" }`).
+  No other frontend changes needed — `feature-card.js`'s multi-toggle rendering and the generic
+  `POST /features/{key}/actions/{action}` dispatch already handled everything else.
+
+### Tests
+
+175 backend tests passing (was 153 before this session's instalock/mode work, +22 for this feature:
+13 parametrized name-normalization cases, 3 `OpggClient` handshake/retry/error tests, 6
+`Instalock`-level integration tests covering promote/disabled/no-enemy-lock/opgg-failure/caching).
+
+### ⚠️ Open item — NOT yet confirmed live
+
+**Does `/lol-champ-select/v1/session`'s `theirTeam[].championId` actually go non-zero *during* the draft
+(when the enemy locks), or only at the loading screen?** This is the one fact the whole feature's
+real-world usefulness depends on, and it could not be tested this session — no active champ select was
+running on the user's machine when this was built. A design-review subagent argued convincingly (standard
+Ranked/Normal Draft is one synchronous 10-player session, not two isolated lobbies — every League player
+has watched an enemy portrait pop in mid-draft) that it should work, but this is reasoning, not a live
+check.
+
+**Action needed**: next time the user is in a real Ranked/Normal draft, watch the Logs tab for
+`"Instalock: promoting <champ> - better matchup vs <enemy>"` after an enemy locks in the same lane, with
+the toggle on. If it never fires despite an enemy having clearly locked, dump
+`GET /lol-champ-select/v1/session` mid-draft and inspect `theirTeam[].championId` directly — that's the
+single quickest way to root-cause it either way.
+
+## Part B — ARAM: Desordem augment overlay — IMPLEMENTED (2026-08-24)
+
+**What it does**: opt-in toggle ("Aram Augments"). While in an ARAM: Desordem match, it detects the
+augment picker appearing on screen, identifies the three offered augments from their icons, looks up
+OP.GG's tier data for the played champion, and draws a click-through overlay badge under each card,
+highlighting the best one. Badges disappear the moment the picker does.
+
+This reverses the earlier "not building this" call recorded in this document — that decision was made on
+the grounds of not duplicating Blitz/OP.GG desktop, and the user later asked for it directly.
+
+### Why screen capture at all
+
+No Riot-sanctioned API exposes which augments are being offered. Verified exhaustively: polled
+`https://127.0.0.1:2999/liveclientdata/allgamedata` every 2s across a full real match, and read the
+complete `/swagger/v3/openapi.json` contract — **zero** occurrences of "augment" in either. Confirmed
+independently mid-investigation: the user's own Blitz overlay was drawing tier badges on the cards while
+Blitz exposes no local port at all, so it can only be doing screen capture + image matching too.
+
+### Requirements (OS-level constraints, not bugs)
+
+- **Borderless / windowed mode.** An exclusive-fullscreen game can neither be captured by a desktop grab
+  nor be drawn over by an overlay window. Blitz and the OP.GG desktop app carry the same requirement.
+- **1920x1080 primary display.** The card geometry is calibrated for it; other resolutions report
+  `unsupported_resolution` and the feature stays idle.
+
+Failing either is harmless: the picker probe simply never matches, so nothing is shown — it never misfires.
+
+### Detecting the picker (do not use the player's level)
+
+The first design triggered on crossing champion level 7/11/15. That is **wrong**, and the calibration
+screenshots proved it: levels 7 and 15 captured only a "you earned an Augment!" notification with no
+cards on screen, because the player opens the picker whenever they choose. Only the level-11 shot caught
+the real picker.
+
+Replaced with direct detection: sample 9 pixels down each of the three cards' gold borders
+(`CARD_BORDER_XS`, `core/aram_augment_regions.py`). Measured across all four calibration screenshots —
+picker open scored **9/9 on all three borders**, every closed-picker shot scored **0-2**. A threshold of
+7 sits in that gap. This also provides the close/hide edge for free.
+
+### Icon matching — what failed, and what works
+
+Three dead ends, all worth not repeating:
+
+1. **Perceptual hash (`imagehash.phash`)** — far too coarse for small line-art glyphs. On a real capture
+   it ranked the correct augment **39th of ~600**. The dependency has since been dropped entirely, which
+   also removed `scipy` and `pywavelets`.
+2. **Binary shape masks** — thresholding to "bright glyph on dark background" discards the dark swirl
+   structure that actually distinguishes the glyphs; the art is two-tone.
+3. **Detail-based auto-localisation of the glyph** — locked onto card chrome (borders, text) instead.
+
+What works, in three parts:
+
+- **Use the `_large` icon variant.** The catalog only ever gives `augmentSmallIconPath`, but many
+  *different* augments share one byte-identical `_small` placeholder (612 files, only 313 distinct
+  images). The `_large` file sitting beside it carries the real per-augment art.
+- **Calibrate the crop geometry against ground truth, not by eye.** Card 0 in the calibration screenshot
+  is known to be "Ethereal Weapon", so the crop was found by searching for the box maximising correlation
+  with that reference: centre (598, 310), 160x160, correlating at **0.9704**. A hand-measured box ~10px
+  off was enough to collapse every candidate score into a band **0.0000** wide — the right answer was
+  "winning" purely by luck.
+- **Normalised cross-correlation at 64x64** on the grayscale glyph, after compositing the transparent
+  reference onto a dark background (skipping that composite alone cost 6 points of Hamming distance).
+  With correct geometry: correct art scores **0.9696-0.9728**, best genuinely-different art **at most
+  0.938**. A threshold of 0.95 sits cleanly between.
+
+### Ambiguity policy — the part that keeps it honest
+
+Even with `_large`, some genuinely different augments ship pixel-identical art (e.g. "Ok Boomerang",
+"Endless Decimation", "And My Axe!" — verified byte-identical, and the in-game render matches that art
+exactly). No image comparison can ever separate those, so `identify()` returns the whole tied candidate
+set rather than picking one.
+
+`AramAugmentAdvisor._resolve_candidates` then resolves it using OP.GG's per-champion data, which only
+covers tier 3 and above:
+
+| Case | Result |
+|---|---|
+| Exactly one candidate rated | show name + tier, eligible for "best" |
+| Several rated, tiers agree | show tier, eligible for "best" |
+| Several rated, tiers disagree | **drop the tier**, mark ambiguous, cannot win "best" |
+| None rated | no tier — reliably means "worse than the rated cards", not "unknown" |
+
+When ambiguous the **name is withheld** (`name: null`) and the overlay shows "Unknown": the matched *art*
+is always correct, so the icon is safe to display; only which augment owns that art is uncertain.
+
+Measured against a real champion pool (Ziggs, 133 augments): of 118 icon groups, **109 fully unambiguous,
+5 ambiguous but tier-identical (harmless), 4 (3.4%) genuinely conflicting**.
+
+### End-to-end result on the real screenshot
+
+Ground truth was Ethereal Weapon / Ok Boomerang / Sonata:
+
+- slot 2 → identified as **Sonata, tier 4, unambiguous → recommended**
+- slots 0 and 1 → correctly flagged ambiguous, no tier, excluded from "best"
+
+Recommending slot 2 is the **correct** answer: the other two are absent from the tier-3+ pool, meaning
+they rate below Sonata.
+
+### Code
+
+- `backend/core/live_client_data.py` (new) — thin client for the port-2999 API; returns `None` while no
+  match is running (the normal idle state), never raises.
+- `backend/core/augment_catalog.py` (new) — catalog fetch, `_large` icon vectors, disk cache
+  (`augments.json` + `vectors.npz`), `identify()` returning a candidate list.
+- `backend/core/augment_vision.py` (new) — `mss` capture plus `picker_is_open()`.
+- `backend/core/aram_augment_regions.py` (new) — calibrated geometry and border-probe constants.
+- `backend/features/aram_augment_advisor.py` (new) — the `ThreadedFeature`: gameflow gate → KIWI check →
+  picker edge detection → capture → identify → tier resolve.
+- `backend/core/opgg_client.py` — added `get_aram_augments()`, plus a parser for a response format this
+  server uses that Part A never hit (see below).
+- `backend/api/server.py` — added `GET /features/{key}` as a cheap single-feature poll target. The bulk
+  `/features` poll runs at 4s and several features make their own LCU round-trip inside `get_status()`,
+  so it is both too slow and too expensive to speed up for a several-second pick window.
+- `desktop/main.js`, `desktop/overlay-preload.js`, `desktop/src/overlay.{html,js}` — the transparent,
+  click-through, always-on-top overlay window. `setAlwaysOnTop(true, "screen-saver")` is what puts it
+  above a borderless game; `showInactive()` keeps it from stealing focus.
+- `desktop/src/aram-overlay-controller.js` — polls the narrow endpoint at 600ms, but only while the
+  feature is enabled *and* League is connected; stops immediately otherwise.
+
+### OP.GG response-format gotcha
+
+Tools called with `desired_output_fields` (`lol_list_aram_augments`, `lol_get_champion_analysis`) do
+**not** return JSON. They return a pseudo-Python "class repr" text:
+
+```
+class Data: augments
+class Augment: id,name,tier,performance
+
+LolListAramAugments(Data([Augment(2132,"Warlock Juicebox",3,79.89), ...]))
+```
+
+`lol_get_lane_matchup_guide` has no `desired_output_fields` in its schema and returns real JSON, which is
+why Part A never hit this. `_parse_class_repr` in `opgg_client.py` handles both formats, including names
+containing commas and apostrophes, and `null` literals.
+
+### Verified vs still pending
+
+Verified: picker detection (4/4 screenshots), icon matching and geometry (real capture against ground
+truth), ambiguity policy (real champion pool), OP.GG augment lookup (live), PyInstaller packaging (frozen
+exe run directly), 206 backend + 19 frontend tests.
+
+**Pending a live run**: the overlay actually drawing over the game (click-through, above borderless), and
+the game-start picker specifically — only the level-up reoffer was ever captured, so if the start picker
+sits elsewhere on screen the border probe simply will not fire there.

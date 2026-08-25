@@ -93,6 +93,7 @@ const FEATURE_DESCRIPTIONS = {
   remove_friends: "Deletes all friends from account",
   status_message: "Custom status message on chat profile",
   badges: "Challenge badges displayed on profile banner",
+  aram_augment_advisor: "Best-augment overlay for ARAM: Mayhem (needs borderless, 1920x1080)",
   valorant_dodge: "Leaves agent select immediately",
   valorant_chat_toggle: "Deceive mode (appear offline to friends)",
 };

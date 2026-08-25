@@ -38,6 +38,12 @@ export async function fetchFeatures() {
   return response.json();
 }
 
+export async function fetchFeatureStatus(key) {
+  const response = await fetchWithTimeout(`${BASE_URL}/features/${key}`, { headers: AUTH_HEADERS });
+  if (!response.ok) throw new Error(`Failed to load ${key} status (HTTP ${response.status})`);
+  return response.json();
+}
+
 export async function toggleFeature(key) {
   const response = await fetchWithTimeout(`${BASE_URL}/features/${key}/toggle`, {
     method: "POST",
