@@ -93,10 +93,10 @@ describe("initAramOverlayController", () => {
         { slot: 2, x: 0.7, y: 0.5, w: 0.08, h: 0.12 },
       ],
       augments: [
-        { slot: 0, augment_id: 1, name: "Augment A", icon_url: "http://icon/1", tier: 4, ambiguous: false },
-        { slot: 1, augment_id: 2, name: "Augment B", icon_url: "http://icon/2", tier: 3, ambiguous: false },
+        { slot: 0, augment_id: 1, name: "Augment A", icon_url: "http://icon/1", tier: 4, rank: "A", ambiguous: false },
+        { slot: 1, augment_id: 2, name: "Augment B", icon_url: "http://icon/2", tier: 3, rank: "S", ambiguous: false },
         // Several augments share this art, so the backend sends no name.
-        { slot: 2, augment_id: 3, name: null, icon_url: "http://icon/3", tier: null, ambiguous: true },
+        { slot: 2, augment_id: 3, name: null, icon_url: "http://icon/3", tier: null, rank: null, ambiguous: true },
       ],
     };
     const fetchFeatureStatus = vi.fn().mockResolvedValue({ recommendation });
@@ -109,9 +109,9 @@ describe("initAramOverlayController", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(showAramOverlay).toHaveBeenCalledWith([
-      { slot: 0, x: 0.1, y: 0.5, w: 0.08, h: 0.12, name: "Augment A", iconUrl: "http://icon/1", tier: 4, ambiguous: false, isBest: false },
-      { slot: 1, x: 0.4, y: 0.5, w: 0.08, h: 0.12, name: "Augment B", iconUrl: "http://icon/2", tier: 3, ambiguous: false, isBest: true },
-      { slot: 2, x: 0.7, y: 0.5, w: 0.08, h: 0.12, name: null, iconUrl: "http://icon/3", tier: null, ambiguous: true, isBest: false },
+      { slot: 0, x: 0.1, y: 0.5, w: 0.08, h: 0.12, name: "Augment A", iconUrl: "http://icon/1", tier: 4, rank: "A", ambiguous: false, isBest: false },
+      { slot: 1, x: 0.4, y: 0.5, w: 0.08, h: 0.12, name: "Augment B", iconUrl: "http://icon/2", tier: 3, rank: "S", ambiguous: false, isBest: true },
+      { slot: 2, x: 0.7, y: 0.5, w: 0.08, h: 0.12, name: null, iconUrl: "http://icon/3", tier: null, rank: null, ambiguous: true, isBest: false },
     ]);
   });
 

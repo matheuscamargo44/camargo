@@ -205,6 +205,20 @@ is always correct, so the icon is safe to display; only which augment owns that 
 Measured against a real champion pool (Ziggs, 133 augments): of 118 icon groups, **109 fully unambiguous,
 5 ambiguous but tier-identical (harmless), 4 (3.4%) genuinely conflicting**.
 
+### Tier direction and the S/A/B ranks
+
+OP.GG's numeric augment tier runs **best-to-worst: lower is better**. Worth stating explicitly because
+the tool's own description ("only tier 3 or higher are included") reads the other way and an inverted
+comparison would recommend the *worst* card on offer. Verified two ways against live data:
+
+- Mean performance by tier for Viego — T3 79.45, T4 78.49, T5 76.64.
+- Shape of the distribution across five champions (Viego, Ziggs, Ezreal, Ahri, Garen): T3 is rare
+  (4-16 per champion), T5 is the bulk (71-106). A quality pyramid, not a flat scale.
+
+Only 3/4/5 are ever returned, so those three are the whole scale and map to `S`/`A`/`B` for display
+(`TIER_RANKS` in `aram_augment_advisor.py`). The numeric tier stays the sort key; the letter is
+presentation only. `test_lower_tier_numbers_are_better` guards the direction.
+
 ### End-to-end result on the real screenshot
 
 Ground truth was Ethereal Weapon / Ok Boomerang / Sonata:
@@ -258,6 +272,14 @@ Verified: picker detection (4/4 screenshots), icon matching and geometry (real c
 truth), ambiguity policy (real champion pool), OP.GG augment lookup (live), PyInstaller packaging (frozen
 exe run directly), 206 backend + 19 frontend tests.
 
-**Pending a live run**: the overlay actually drawing over the game (click-through, above borderless), and
-the game-start picker specifically — only the level-up reoffer was ever captured, so if the start picker
-sits elsewhere on screen the border probe simply will not fire there.
+**Confirmed live 2026-08-25**, by capturing the user's screen while the picker was open in a real match:
+`picker_is_open()` returned True, and the overlay was drawing its badges over the three cards with the
+best one outlined — the whole chain works end to end against the real game.
+
+**Still pending**: the game-start picker specifically. Only the level-up reoffer has ever been captured,
+so if the start picker sits elsewhere on screen the border probe will not fire there (harmlessly - it
+shows nothing rather than something wrong).
+
+**Watch out when debugging from source**: `identify()` returning nothing in a dev script usually means
+the dev `backend/augment_cache/` was deleted and the catalog has not been rebuilt - the installed app
+keeps its own cache under `%APPDATA%/camargo/`. That cost a wrong diagnosis once.

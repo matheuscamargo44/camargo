@@ -35,6 +35,20 @@ logger = logging.getLogger(__name__)
 
 ARAM_MAYHEM_GAME_MODE = "KIWI"
 
+#: OP.GG rates ARAM augments on a numeric tier where **lower is better** -
+#: verified against performance scores per champion (Viego: T3 averages
+#: 79.5, T4 78.5, T5 76.6) and against the shape of the distribution, where
+#: T3 is rare and T5 is the bulk. Only 3/4/5 are ever returned, checked
+#: across five champions, so the three of them are the whole scale and the
+#: best one earns the top rank.
+TIER_RANKS = {3: "S", 4: "A", 5: "B"}
+
+
+def tier_rank(tier):
+    """Letter rank for display. Numeric tier stays the sort key; this is
+    presentation only."""
+    return TIER_RANKS.get(tier)
+
 #: The gold border is drawn before the icons finish fading in, so give the
 #: picker a moment to settle, then confirm it's still open before capturing.
 CAPTURE_SETTLE_SECONDS = 0.4
@@ -175,6 +189,7 @@ class AramAugmentAdvisor(ThreadedFeature):
                     "name": None if ambiguous else augment_catalog.name(augment_id),
                     "icon_url": augment_catalog.icon_url(augment_id),
                     "tier": tier,
+                    "rank": tier_rank(tier),
                     "ambiguous": ambiguous,
                 }
             )

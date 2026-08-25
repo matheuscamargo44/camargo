@@ -6,8 +6,10 @@ test_champ_select.py.
 """
 import copy
 
+import pytest
+
 from core.config import DEFAULT_CONFIG
-from features.aram_augment_advisor import AramAugmentAdvisor
+from features.aram_augment_advisor import AramAugmentAdvisor, tier_rank
 
 
 class StubLCUClient:
@@ -23,6 +25,41 @@ def make_feature():
     feature.config["aram_augment_advisor"]["enabled"] = True
     feature._sleep = lambda seconds: False
     return feature
+
+
+# -- tier ranks --
+
+
+@pytest.mark.parametrize("tier,expected", [(3, "S"), (4, "A"), (5, "B")])
+def test_tier_rank_maps_the_whole_scale(tier, expected):
+    """OP.GG only ever returns tiers 3/4/5 for ARAM augments - verified
+    across five champions - so those three are the entire scale and the
+    best of them is the top rank."""
+    assert tier_rank(tier) == expected
+
+
+def test_tier_rank_of_an_unrated_augment_is_nothing():
+    assert tier_rank(None) is None
+
+
+def test_lower_tier_numbers_are_better(monkeypatch):
+    """Guards the direction of the comparison. OP.GG's numeric tier runs
+    best-to-worst (T3 outperforms T5 on their own performance scores), so
+    an inverted comparison here would recommend the worst card on offer.
+    """
+    _patch_identification(
+        monkeypatch,
+        per_slot_candidates=[[1], [2], [3]],
+        tier_data={1: {"tier": 5}, 2: {"tier": 3}, 3: {"tier": 4}},
+    )
+    feature = make_feature()
+    feature._champ_name_to_id = {"Ahri": 103}
+
+    recommendation = feature._build_recommendation("Ahri")
+
+    assert recommendation["best_slot"] == 1
+    assert recommendation["augments"][1]["rank"] == "S"
+    assert [augment["rank"] for augment in recommendation["augments"]] == ["B", "S", "A"]
 
 
 # -- _resolve_candidates: the ambiguity policy --

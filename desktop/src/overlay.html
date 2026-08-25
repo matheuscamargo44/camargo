@@ -49,11 +49,24 @@
       display: block;
     }
 
-    .aram-badge-tier {
-      font-size: 11px;
-      font-weight: 700;
-      color: #8b8b93;
+    .aram-badge-rank {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 5px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      color: #05070f;
+      background: #8b8b93;
     }
+    /* S is rare - roughly 5% of a champion's pool - so it gets the gold. */
+    .aram-badge-rank.rank-s { background: #f0c040; }
+    .aram-badge-rank.rank-a { background: #6d8bff; }
+    .aram-badge-rank.rank-b { background: #6f7079; color: #e8e8ec; }
 
     .aram-badge-unknown {
       color: #8b8b93;

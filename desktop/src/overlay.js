@@ -33,11 +33,13 @@ function renderBadges(payload) {
     }
     el.appendChild(name);
 
-    if (badge.tier != null) {
-      const tier = document.createElement("span");
-      tier.className = "aram-badge-tier";
-      tier.textContent = `T${badge.tier}`;
-      el.appendChild(tier);
+    if (badge.rank) {
+      const rank = document.createElement("span");
+      // Colour by rank so the best card reads at a glance without having
+      // to compare three badges.
+      rank.className = `aram-badge-rank rank-${badge.rank.toLowerCase()}`;
+      rank.textContent = badge.rank;
+      el.appendChild(rank);
     }
 
     container.appendChild(el);

@@ -29,6 +29,7 @@ function buildBadges(recommendation) {
         name: augment.name,
         iconUrl: augment.icon_url,
         tier: augment.tier,
+        rank: augment.rank ?? null,
         ambiguous: Boolean(augment.ambiguous),
         isBest: region.slot === recommendation.best_slot,
       };
