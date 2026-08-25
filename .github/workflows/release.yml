@@ -33,6 +33,12 @@ jobs:
         shell: bash
         run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
+      # `dist` runs electron-builder with --publish never. package.json does
+      # carry a `publish` block, but only so electron-builder emits
+      # latest.yml and app-update.yml, which the in-app updater needs to
+      # find releases. Without --publish never, electron-builder treats a CI
+      # tag build as a request to publish and fails for want of a GH_TOKEN;
+      # the upload is the next step's job.
       - name: Build backend executable and installer
         working-directory: desktop
         run: npm run dist

@@ -8,7 +8,7 @@
     "start": "electron .",
     "test": "vitest run",
     "build:backend": "cd ../backend && uv run pyinstaller --onefile --noconsole --noconfirm --name camargo-backend --distpath dist --workpath build --specpath . --paths . main.py",
-    "dist": "npm run build:backend && electron-builder"
+    "dist": "npm run build:backend && electron-builder --publish never"
   },
   "devDependencies": {
     "electron": "^33.0.0",
