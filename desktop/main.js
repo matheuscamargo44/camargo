@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 const { createBackendManager } = require("./backend-manager");
+const { createUpdateManager } = require("./update-manager");
 
 const ICON_PATH = path.join(__dirname, "build", "icon.png");
 const BACKEND_URL = "http://127.0.0.1:8731";
@@ -57,6 +58,27 @@ const backendManager = createBackendManager({
   backendUrl: BACKEND_URL,
   onRespawn: reportRespawn,
 });
+
+// Built lazily in whenReady: requiring electron-updater at module load
+// would pull in its GitHub feed machinery even for `npm start` dev runs,
+// where it has nothing to talk to.
+let updateManager = null;
+
+function broadcastUpdateState(state) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("camargo:update-state", state);
+  }
+}
+
+function createUpdater() {
+  const { autoUpdater } = require("electron-updater");
+  return createUpdateManager({
+    updater: autoUpdater,
+    isPackaged: app.isPackaged,
+    onStateChange: broadcastUpdateState,
+    log: (message) => console.log(`[updater] ${message}`),
+  });
+}
 
 function createWindow() {
   const startHidden = process.argv.includes("--hidden") || app.getLoginItemSettings().wasOpenedAsHidden;
@@ -219,6 +241,26 @@ ipcMain.on("camargo:aram-overlay-hide", () => {
   if (overlayWindow) overlayWindow.hide();
 });
 
+// -- in-app updates --
+
+ipcMain.handle("camargo:update-get-state", () =>
+  updateManager ? updateManager.getState() : { status: "idle", version: null, percent: 0, message: null }
+);
+
+ipcMain.handle("camargo:update-check", () => updateManager?.check({ silent: false }));
+
+ipcMain.handle("camargo:update-download", () => updateManager?.download());
+
+ipcMain.handle("camargo:update-install", async () => {
+  if (!updateManager) return false;
+  // The installer replaces files the backend exe is running from, and
+  // quitAndInstall does not wait for async before-quit handlers - so stop
+  // the backend explicitly first.
+  isQuitting = true;
+  await backendManager.stop();
+  return updateManager.install();
+});
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -234,6 +276,9 @@ if (!gotSingleInstanceLock) {
     createOverlayWindow();
     createTray();
 
+    updateManager = createUpdater();
+    updateManager.start();
+
     app.on("activate", showWindow);
   });
 
@@ -241,6 +286,7 @@ if (!gotSingleInstanceLock) {
 
   app.on("before-quit", async () => {
     isQuitting = true;
+    updateManager?.stop();
     await backendManager.stop();
   });
 }

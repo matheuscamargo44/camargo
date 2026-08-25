@@ -40,5 +40,12 @@ jobs:
       - name: Upload installer to release
         uses: softprops/action-gh-release@v2
         with:
-          files: desktop/release/*.exe
+          # latest.yml is the feed electron-updater reads to discover new
+          # versions; without it the in-app updater can never see a release.
+          # The blockmap lets it download only the changed chunks instead of
+          # the whole ~110MB installer.
+          files: |
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+            desktop/release/latest.yml
           generate_release_notes: true

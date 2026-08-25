@@ -201,6 +201,52 @@ main#view-root.view-enter {
   opacity: 0.4;
 }
 
+/* ── In-App Update Pill ─────────────────────────────────────────── */
+/* Shares the topbar pill shape, but reads as an action rather than a
+   status: accent-tinted, and only present when there is one to take. */
+.update-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background var(--transition-normal), border-color var(--transition-normal), color var(--transition-normal);
+}
+.update-pill:hover:not(:disabled) {
+  background: var(--accent);
+  color: #05070f;
+}
+.update-pill:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.update-pill.is-ready {
+  border-color: var(--success);
+  background: var(--success-soft);
+  color: var(--success);
+}
+.update-pill.is-ready:hover {
+  background: var(--success);
+  color: #05070f;
+}
+.update-pill.is-error {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.update-pill.is-error:hover {
+  background: var(--danger);
+  color: #05070f;
+}
+
 /* ── League Client Status & Summoner Badge ──────────────────────── */
 .league-status-compact {
   display: flex;

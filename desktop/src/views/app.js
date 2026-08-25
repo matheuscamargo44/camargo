@@ -4,6 +4,7 @@ import { el } from "../components.js";
 import { mountLeagueStatus } from "../league-status.js";
 import { registerRoute, startRouter } from "../router.js";
 import { startPolling } from "../state.js";
+import { mountUpdateIndicator } from "../update-indicator.js";
 import { mountValorantStatus } from "../valorant-status.js";
 import { NAV_ITEMS } from "./categories.js";
 import { renderLeagueView } from "./league.js";
@@ -76,6 +77,7 @@ function bootstrap() {
   buildNav();
   mountValorantStatus(valorantStatusSlot);
   mountLeagueStatus(leagueStatusSlot);
+  mountUpdateIndicator(document.getElementById("update-slot"));
 
   registerRoute("/league/automation", (root) => renderLeagueView(root, "Automation"));
   registerRoute("/league/customization", (root) => renderLeagueView(root, "Customization"));

@@ -189,6 +189,17 @@ export function buildFeatureCard(meta, initialStatus) {
       return;
     }
 
+    // Aram Augments has no summary worth a status line - it either sits
+    // idle or draws its overlay in-game. Its status fields are plumbing
+    // for the overlay, not something to render as pills.
+    if (meta.key === "aram_augment_advisor") {
+      const text = status.unsupported_resolution
+        ? "Needs a 1920x1080 primary display"
+        : FEATURE_DESCRIPTIONS[meta.key];
+      statusContainer.appendChild(el("span", { class: "feature-row-desc", text }));
+      return;
+    }
+
     const items = [];
 
     for (const [field, value] of Object.entries(status)) {

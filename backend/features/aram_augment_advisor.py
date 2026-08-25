@@ -25,6 +25,7 @@ import logging
 
 from core.aram_augment_regions import AUGMENT_CARD_REGIONS, SUPPORTED_RESOLUTION
 from core.augment_catalog import augment_catalog
+from core.config import save_config
 from core.augment_vision import capture_region, picker_is_open, primary_monitor_resolution
 from core.live_client_data import get_all_game_data, local_player
 from core.opgg_client import opgg_client
@@ -62,6 +63,14 @@ class AramAugmentAdvisor(ThreadedFeature):
             "unsupported_resolution": self._unsupported_resolution,
             "recommendation": self._recommendation,
         }
+
+    def toggle(self, state: bool = None) -> bool:
+        current = self.config.get("aram_augment_advisor", {}).get("enabled", False)
+        new_state = (not current) if state is None else state
+        self.config.setdefault("aram_augment_advisor", {})["enabled"] = new_state
+        save_config(self.config)
+        self.on_event("info", f"Aram Augments {'enabled' if new_state else 'disabled'}")
+        return new_state
 
     def _reset_game_state(self):
         self._picker_was_open = False

@@ -1,7 +1,7 @@
 {
   "name": "camargo",
   "productName": "camargo",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Desktop UI for the camargo League of Legends & VALORANT toolkit",
   "main": "main.js",
   "scripts": {
@@ -26,6 +26,7 @@
       "preload.js",
       "overlay-preload.js",
       "backend-manager.js",
+      "update-manager.js",
       "src/**/*",
       "!src/**/*.test.js",
       "build/icon.png"
@@ -34,6 +35,13 @@
       {
         "from": "../backend/dist/camargo-backend.exe",
         "to": "backend/camargo-backend.exe"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "matheuscamargo44",
+        "repo": "camargo"
       }
     ],
     "win": {
@@ -48,5 +56,8 @@
       "artifactName": "camargo-setup-${version}.${ext}",
       "shortcutName": "camargo"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }
