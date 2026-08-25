@@ -202,16 +202,16 @@ main#view-root.view-enter {
 }
 
 /* ── In-App Update Pill ─────────────────────────────────────────── */
-/* Shares the topbar pill shape, but reads as an action rather than a
-   status: accent-tinted, and only present when there is one to take. */
+/* Shares the topbar pill shape. Quiet by default (it just shows the
+   version and offers a check), loud only when there is an action. */
 .update-pill {
   display: inline-flex;
   align-items: center;
   padding: 4px 12px;
   border-radius: 999px;
-  border: 1px solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent-hover);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
   font-family: inherit;
@@ -221,6 +221,18 @@ main#view-root.view-enter {
   transition: background var(--transition-normal), border-color var(--transition-normal), color var(--transition-normal);
 }
 .update-pill:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.update-pill:disabled {
+  cursor: default;
+}
+.update-pill.is-action {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.update-pill.is-action:hover:not(:disabled) {
   background: var(--accent);
   color: #05070f;
 }

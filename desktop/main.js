@@ -178,6 +178,15 @@ function updateTrayMenu() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open camargo", click: showWindow },
+      {
+        label: "Check for updates",
+        click: () => {
+          // Surface the window too: the result shows up as the topbar pill,
+          // which is no use to anyone still looking at the tray.
+          showWindow();
+          updateManager?.check({ silent: false });
+        },
+      },
       { type: "separator" },
       {
         label: "Start with Windows",
