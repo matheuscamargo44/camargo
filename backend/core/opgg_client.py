@@ -230,6 +230,38 @@ class OpggClient:
         }
 
 
+
+    def get_champion_counters(self, champion_name, position):
+        """Champions that beat `champion_name` in `position`, best first.
+
+        Reads the target's own `weak_counters` - the champions it loses to -
+        which is exactly "what should I pick against them", in one call.
+        Asking the inverse question (does candidate X beat them?) would cost
+        one call per candidate, and each call measures ~3s against a pick
+        window of roughly 30s.
+
+        `counter_win_rate` is the *counter's* win rate in that matchup, not
+        the target's, so it is already the number to show the player.
+        """
+        result = self._call_tool(
+            "lol_get_champion_analysis",
+            {
+                "game_mode": "RANKED",
+                "champion": to_opgg_champion_key(champion_name),
+                "position": position,
+                "lang": "en_US",
+                "desired_output_fields": [
+                    "data.weak_counters[].{champion_name,counter_win_rate}"
+                ],
+            },
+        )
+        counters = (result.get("data", {}) or {}).get("weak_counters") or []
+        return [
+            {"name": entry["champion_name"], "win_rate": entry["counter_win_rate"]}
+            for entry in counters
+            if entry.get("champion_name") and entry.get("counter_win_rate") is not None
+        ]
+
 #: Shared across every consumer (currently just Instalock) - one MCP
 #: session, not one per feature.
 opgg_client = OpggClient()

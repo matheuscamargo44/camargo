@@ -1325,3 +1325,46 @@ main#view-root.view-enter {
   overflow-x: auto;
   max-height: 220px;
 }
+
+/* Counter Picks: a short ranked list, so the win rate is the column the
+   eye should land on - right-aligned and tabular so the digits line up. */
+.counter-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.counter-pick-vs {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.counter-pick-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.counter-pick-name {
+  font-weight: 600;
+}
+
+.counter-pick-wr {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* A champion the player already queued up is the actionable one. */
+.counter-pick-row.is-mine .counter-pick-name {
+  color: var(--accent);
+}
+
+.counter-pick-owned {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  opacity: 0.85;
+}

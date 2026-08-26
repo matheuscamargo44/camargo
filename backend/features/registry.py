@@ -16,6 +16,7 @@ from features.dodge import Dodge
 from features.friend_requests import FriendRequestsManager
 from features.instalock import Instalock
 from features.autoban import AutoBan
+from features.counter_pick_advisor import CounterPickAdvisor
 from features.lobby_reveal import LobbyReveal
 from features.loot import MassDisenchant
 from features.party_invite import AutoPartyInvite
@@ -34,6 +35,7 @@ FEATURE_CLASSES = [
     AutoAccept,
     Instalock,
     AutoBan,
+    CounterPickAdvisor,
     AutoPlayAgain,
     AutoPartyInvite,
     AutoHonor,

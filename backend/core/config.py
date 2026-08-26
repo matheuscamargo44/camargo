@@ -51,6 +51,9 @@ DEFAULT_CONFIG = {
     "auto_honor": {
         "enabled": False,
     },
+    "counter_pick_advisor": {
+        "enabled": False,
+    },
     "lobby_reveal": {
         "provider": "porofessor",
     },

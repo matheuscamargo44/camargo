@@ -56,6 +56,7 @@ const FEATURE_ICON_MAP = {
   background: "palette",
   badges: "award",
   challenge_titles: "tag",
+  counter_pick_advisor: "shield",
   lobby_reveal: "users",
   mass_disenchant: "package",
   status_message: "message-circle",

@@ -83,6 +83,7 @@ function buildChampionListDisplay(field, names) {
 }
 
 const FEATURE_DESCRIPTIONS = {
+  counter_pick_advisor: "Shows who beats your lane opponent, once they lock in",
   lobby_reveal: "Open everyone in champ select on a scouting site",
   auto_accept: "Accepts match ready checks automatically",
   auto_play_again: "Auto-starts queue in lobby and after matches",
@@ -157,6 +158,33 @@ export function buildFeatureCard(meta, initialStatus) {
     // Special formatted status for AutoBan (priority list, tried in order)
     if (meta.key === "autoban") {
       statusContainer.appendChild(buildChampionListDisplay("autoban_champion", status.autoban_champion));
+      return;
+    }
+
+    // Counter Picks: the whole point of the feature is the list, so it is
+    // rendered as one, rather than flattened into generic key/value pills.
+    if (meta.key === "counter_pick_advisor") {
+      const rec = status.recommendation;
+      if (!rec) {
+        statusContainer.appendChild(
+          el("span", { class: "feature-row-desc", text: "Waiting for your lane opponent to lock in" })
+        );
+        return;
+      }
+      const wrap = el("div", { class: "counter-pick-list" });
+      wrap.appendChild(el("div", { class: "counter-pick-vs", text: `vs ${rec.enemy} (${rec.position})` }));
+      for (const counter of rec.counters) {
+        const row = el("div", { class: "counter-pick-row" + (counter.in_my_list ? " is-mine" : "") });
+        row.appendChild(el("span", { class: "counter-pick-name", text: counter.name }));
+        row.appendChild(
+          el("span", { class: "counter-pick-wr", text: `${Math.round(counter.win_rate * 100)}%` })
+        );
+        if (counter.in_my_list) {
+          row.appendChild(el("span", { class: "counter-pick-owned", text: "in your list" }));
+        }
+        wrap.appendChild(row);
+      }
+      statusContainer.appendChild(wrap);
       return;
     }
 
