@@ -118,4 +118,4 @@ class FeatureRegistry:
     def status(self):
         features = list(self.features.values())
         results = self._status_pool.map(self._safe_status, features)
-        return {feature.key: status for feature, status in zip(features, results)}
+        return {feature.key: status for feature, status in zip(features, results, strict=True)}

@@ -100,9 +100,12 @@ class ValorantClient:
 
     def _ensure_activated(self, force=False):
         with self._lock:
-            if self._client is not None and not force:
-                if time.monotonic() - self._activated_at < ACTIVATION_TTL_SECONDS:
-                    return self._client
+            if (
+                self._client is not None
+                and not force
+                and time.monotonic() - self._activated_at < ACTIVATION_TTL_SECONDS
+            ):
+                return self._client
             region = self._region_override or detect_region()
 
         if not region:

@@ -88,7 +88,7 @@ def _service_url(port):
 def _headers(token):
     if not token:
         return {}
-    auth = base64.b64encode(f"riot:{token}".encode("utf-8")).decode("utf-8")
+    auth = base64.b64encode(f"riot:{token}".encode()).decode("utf-8")
     return {"Authorization": f"Basic {auth}", "Content-Type": "application/json"}
 
 
@@ -203,6 +203,12 @@ class LCUClient:
                 else:
                     logger.debug("%s %s %s -> HTTP %d", service, method, endpoint, response.status_code)
                 return response
+
+        # Unreachable: the loop either returns a response or, on the final
+        # attempt, re-raises. Stated explicitly so that a future edit
+        # breaking that invariant fails loudly instead of handing every
+        # caller a silent None.
+        raise RuntimeError(f"{service} {method} {endpoint} exhausted retries without a result")
 
     def lcu_request(self, method, endpoint, body=""):
         return self._request(

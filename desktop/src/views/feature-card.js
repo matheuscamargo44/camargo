@@ -11,7 +11,7 @@ import { openSkinPicker } from "../skin-picker.js";
 import { openTitlePicker } from "../title-picker.js";
 import { featureIcon } from "../icons.js";
 import { isFeatureConnected, onHealthUpdate, refreshNow } from "../state.js";
-import { formatSpecialDisplay, formatValue, isBooleanField, isSpecialDisplayField, STATUS_FIELD_LABELS, statusPill } from "../status-format.js";
+import { formatSpecialDisplay, formatValue, isSpecialDisplayField, STATUS_FIELD_LABELS, statusPill } from "../status-format.js";
 import { getAgentIcon, getAgentIconsMap, getRankTierInfo, getRankTiersMap } from "../valorant-data.js";
 import { FEATURE_ACTIONS, FEATURE_TOGGLES } from "./forms.js";
 

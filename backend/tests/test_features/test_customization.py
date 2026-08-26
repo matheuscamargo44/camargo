@@ -1,4 +1,6 @@
 """Badges.change: profile badge/title updates."""
+import pytest
+
 from features.customization import Badges
 
 
@@ -64,6 +66,6 @@ def test_copy_mode_with_no_badges_to_copy_raises():
 
     try:
         feature.change("copy")
-        assert False, "expected a ValueError"
+        pytest.fail("expected a ValueError")
     except ValueError:
         pass

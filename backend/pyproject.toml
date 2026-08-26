@@ -17,6 +17,7 @@ dev = [
     "pytest>=8.3.5",
     "httpx>=0.27.0",
     "pyinstaller>=6.22.2",
+    "ruff>=0.14.0",
 ]
 
 [tool.pytest.ini_options]
@@ -25,3 +26,48 @@ pythonpath = ["."]
 markers = [
     "e2e: real feature code + real background threads + a real HTTP server (fake LCU) - slower (~10s) than the rest of the suite combined. Run everything with `pytest`; skip these for a fast local loop with `pytest -m 'not e2e'`.",
 ]
+
+[tool.ruff]
+# Not a style target - measured against the code that exists: p95 is 79
+# and p99 is 99, so 120 leaves normal code alone and only catches lines
+# that are genuinely running away. Reformatting the repo to a narrower
+# limit would bury the git history without making anything more readable.
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "F",    # pyflakes - dead code, undefined names. The rules that find real bugs.
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "B",    # bugbear - likely bugs (lost exception context, mutable defaults, ...)
+    "C4",   # comprehension rewrites
+    "SIM",  # simplifiable constructs
+    "UP",   # outdated syntax for our target-version
+    "RET",  # unreachable/redundant returns
+]
+# Deliberately not enabled:
+#   I   (import sorting) - would rewrite the import block of nearly every
+#       file at once, for no behavioural gain.
+#   ARG (unused arguments) - 73 hits, almost all of them stub methods
+#       implementing an interface, where the argument has to exist.
+ignore = [
+    # Feature.start/stop are documented optional hooks: a feature that has
+    # no background loop is *supposed* to inherit an empty body, so making
+    # them abstract would force every subclass to write `pass`.
+    "B027",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# Calling these in a parameter default is FastAPI's documented idiom, not
+# the mutable-default bug B008 exists to catch.
+extend-immutable-calls = ["fastapi.Body", "fastapi.Depends", "fastapi.Query"]
+
+[tool.ruff.lint.per-file-ignores]
+# These are payloads captured verbatim from live servers (OP.GG's MCP, the
+# LCU). Rewrapping them to fit a column limit makes them harder to compare
+# against what the real service returns, which is the only reason they are
+# pasted in full rather than built up.
+"tests/test_opgg_client.py" = ["E501"]
+"tests/test_features/test_valorant_rank.py" = ["E501"]
+"tests/e2e/fake_lcu_server.py" = ["E501"]

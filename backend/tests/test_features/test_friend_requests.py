@@ -27,8 +27,7 @@ class _Response:
 
 
 def make_feature(requests):
-    feature = FriendRequestsManager(StubLCUClient(requests), {})
-    return feature
+    return FriendRequestsManager(StubLCUClient(requests), {})
 
 
 def test_pending_count_only_counts_incoming_requests():

@@ -1,18 +1,22 @@
 {
   "name": "camargo",
   "productName": "camargo",
-  "version": "0.17.2",
+  "version": "0.17.3",
   "description": "Desktop UI for the camargo League of Legends & VALORANT toolkit",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "test": "vitest run",
     "build:backend": "cd ../backend && uv run pyinstaller --onefile --noconsole --noconfirm --name camargo-backend --distpath dist --workpath build --specpath . --paths . main.py",
-    "dist": "npm run build:backend && electron-builder --publish never"
+    "dist": "npm run build:backend && electron-builder --publish never",
+    "lint": "eslint ."
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "electron": "^33.0.0",
     "electron-builder": "^25.1.8",
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0",
     "vitest": "^2.1.9"
   },
   "build": {

@@ -121,7 +121,7 @@ def _parse_class_repr(text):
         fields = class_fields.get(class_name)
         if fields is None:
             return args
-        return dict(zip(fields, args))
+        return dict(zip(fields, args, strict=False))
 
     return parse_value()
 

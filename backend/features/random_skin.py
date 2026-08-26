@@ -78,7 +78,10 @@ class RandomSkinPicker(ThreadedFeature):
                                     )
                                     if patch_res.status_code in (200, 201, 204):
                                         self.last_randomized_session = game_id
-                                        self.on_event("success", f"Random Skin Picker: Selected skin ID {chosen_skin_id}")
+                                        self.on_event(
+                                            "success",
+                                            f"Random Skin Picker: Selected skin ID {chosen_skin_id}",
+                                        )
                                         self._sleep(2.0)
                 else:
                     self.last_randomized_session = None

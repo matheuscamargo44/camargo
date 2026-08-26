@@ -104,7 +104,8 @@ class MassDisenchant(Feature):
 
             if item_type == "CHEST" or loot_id.startswith("CHEST_"):
                 # Check if it requires a key (generic hextech/masterwork)
-                if "generic" in loot_id.lower() or "masterwork" in loot_id.lower() or "champion_mastery" in loot_id.lower():
+                lowered = loot_id.lower()
+                if any(marker in lowered for marker in ("generic", "masterwork", "champion_mastery")):
                     to_open = min(count, keys_available)
                     if to_open > 0:
                         recipe = f"{loot_id}_OPEN"

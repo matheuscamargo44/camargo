@@ -1,3 +1,4 @@
+import pytest
 from core import config as config_module
 from core import paths as paths_module
 
@@ -135,7 +136,7 @@ def test_save_config_gives_up_after_exhausting_retries(tmp_path, monkeypatch):
 
     try:
         config_module.save_config({"auto_accept": {"enabled": True}})
-        assert False, "expected the persistent race to eventually raise"
+        pytest.fail("expected the persistent race to eventually raise")
     except RuntimeError:
         pass
 

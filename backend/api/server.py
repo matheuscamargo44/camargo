@@ -184,7 +184,7 @@ def get_feature_status(key: str):
     try:
         feature = registry.get(key)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return feature.get_status()
 
 
@@ -200,7 +200,7 @@ def toggle_feature(key: str):
     try:
         feature = registry.get(key)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     _require_connected(feature)
 
@@ -252,7 +252,7 @@ def call_feature_action(key: str, action_name: str, params: dict = Body(default=
     try:
         feature = registry.get(key)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     _require_connected(feature)
 
@@ -269,8 +269,8 @@ def call_feature_action(key: str, action_name: str, params: dict = Body(default=
     except TypeError as exc:
         # Wrong, missing, or wrong-typed keys in `params` are a client
         # mistake, not a crash.
-        raise HTTPException(status_code=400, detail=f"Invalid parameters for '{action_name}': {exc}")
+        raise HTTPException(status_code=400, detail=f"Invalid parameters for '{action_name}': {exc}") from exc
     except (ValueError, RuntimeError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"result": result, "status": feature.get_status()}

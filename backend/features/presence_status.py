@@ -40,7 +40,10 @@ class PresenceStatus(Feature):
 
         availability = availability.lower().strip()
         if availability not in VALID_AVAILABILITIES:
-            raise ValueError(f"Invalid availability '{availability}'. Expected one of: {', '.join(VALID_AVAILABILITIES)}")
+            raise ValueError(
+                f"Invalid availability '{availability}'. "
+                f"Expected one of: {', '.join(VALID_AVAILABILITIES)}"
+            )
 
         res = self.lcu.lcu_request("PUT", "/lol-chat/v1/me", {"availability": availability})
         if res.status_code not in (200, 201, 204):

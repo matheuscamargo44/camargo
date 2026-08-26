@@ -25,12 +25,6 @@ export const STATUS_FIELD_LABELS = {
   availability: "Availability",
 };
 
-const BOOLEAN_FIELD_PATTERN = /(^enabled$|_enabled$|^disconnected$)/;
-
-export function isBooleanField(field, value) {
-  return typeof value === "boolean" && BOOLEAN_FIELD_PATTERN.test(field);
-}
-
 export function isSpecialDisplayField(field, value) {
   if (arguments.length > 1 && (value === null || value === undefined || value === "")) return false;
   return (

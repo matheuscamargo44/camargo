@@ -1,3 +1,4 @@
+import pytest
 from core.config import DEFAULT_CONFIG
 from features.auto_accept import AutoAccept
 
@@ -60,7 +61,7 @@ def test_accept_match_raises_on_error_status():
 
     try:
         feature.accept_match()
-        assert False, "expected RuntimeError"
+        pytest.fail("expected RuntimeError")
     except RuntimeError:
         pass
 

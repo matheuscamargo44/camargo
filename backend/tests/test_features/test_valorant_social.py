@@ -1,3 +1,4 @@
+import pytest
 from features.valorant_social import ValorantChatToggle
 
 
@@ -90,6 +91,6 @@ def test_toggle_raises_on_a_failed_response():
 
     try:
         feature.toggle()
-        assert False, "expected RuntimeError"
+        pytest.fail("expected RuntimeError")
     except RuntimeError as exc:
         assert "500" in str(exc)

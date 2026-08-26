@@ -1,3 +1,4 @@
+import pytest
 import copy
 
 from core.config import DEFAULT_CONFIG
@@ -22,7 +23,7 @@ class FakeLCUClient:
 def make_feature(status_codes):
     lcu = FakeLCUClient(status_codes)
     events = []
-    feature = Dodge(lcu, copy.deepcopy(DEFAULT_CONFIG), on_event=lambda l, m: events.append((l, m)))
+    feature = Dodge(lcu, copy.deepcopy(DEFAULT_CONFIG), on_event=lambda level, message: events.append((level, message)))
     return feature, lcu, events
 
 
@@ -40,6 +41,6 @@ def test_dodge_raises_when_all_requests_fail():
 
     try:
         feature.dodge()
-        assert False, "expected RuntimeError"
+        pytest.fail("expected RuntimeError")
     except RuntimeError:
         pass
