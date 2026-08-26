@@ -20,19 +20,20 @@
       height: 100%;
     }
 
+    /* Anchored by `bottom` (set in overlay.js) so the box grows upward
+       from just above the card, regardless of how many lines the
+       justification wraps to - no height calc needed in JS. */
     .aram-badge {
       position: absolute;
       display: flex;
-      align-items: center;
-      gap: 6px;
+      flex-direction: column;
+      gap: 3px;
+      width: 190px;
       background: #1b1b20e6;
       color: #f2f2f4;
       border: 1px solid #38383f;
       border-radius: 8px;
-      padding: 4px 10px 4px 4px;
-      font-size: 13px;
-      font-weight: 600;
-      white-space: nowrap;
+      padding: 6px 8px;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     }
 
@@ -41,19 +42,42 @@
       box-shadow: 0 0 0 2px rgba(109, 139, 255, 0.35), 0 4px 16px rgba(0, 0, 0, 0.4);
     }
 
+    .aram-badge-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
     .aram-badge-icon {
       width: 22px;
       height: 22px;
       border-radius: 5px;
       object-fit: cover;
       display: block;
+      flex: 0 0 auto;
+    }
+
+    .aram-badge-name {
+      font-size: 13px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .aram-badge-unknown {
+      color: #8b8b93;
+      font-style: italic;
+      font-weight: 500;
     }
 
     .aram-badge-rank {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 20px;
+      min-width: 22px;
       height: 20px;
       padding: 0 5px;
       border-radius: 5px;
@@ -62,20 +86,21 @@
       letter-spacing: 0.02em;
       color: #05070f;
       background: #8b8b93;
+      flex: 0 0 auto;
     }
-    /* S is rare - roughly 5% of a champion's pool - so it gets the gold. */
+    /* OP is rarer than S (the very best of an already-elite tier), so it
+       gets a hotter color; S is rare on its own - roughly 5% of a
+       champion's pool - so it gets the gold. */
+    .aram-badge-rank.rank-op { background: #ff6b4a; }
     .aram-badge-rank.rank-s { background: #f0c040; }
     .aram-badge-rank.rank-a { background: #6d8bff; }
     .aram-badge-rank.rank-b { background: #6f7079; color: #e8e8ec; }
 
-    .aram-badge-unknown {
-      color: #8b8b93;
-      font-style: italic;
+    .aram-badge-justification {
+      font-size: 11px;
       font-weight: 500;
-    }
-
-    .aram-badge.is-best .aram-badge-tier {
-      color: #7f9aff;
+      line-height: 1.35;
+      color: #b8b8bf;
     }
   </style>
 </head>

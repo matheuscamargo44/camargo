@@ -9,7 +9,7 @@ import copy
 import pytest
 
 from core.config import DEFAULT_CONFIG
-from features.aram_augment_advisor import AramAugmentAdvisor, tier_rank
+from features.aram_augment_advisor import AramAugmentAdvisor, augment_justification, augment_rank
 
 
 class StubLCUClient:
@@ -27,25 +27,54 @@ def make_feature():
     return feature
 
 
-# -- tier ranks --
+# -- ranks: tier -> letter, and carving OP out of S --
 
 
 @pytest.mark.parametrize("tier,expected", [(3, "S"), (4, "A"), (5, "B")])
-def test_tier_rank_maps_the_whole_scale(tier, expected):
+def test_augment_rank_maps_the_whole_scale_with_no_performance_data(tier, expected):
     """OP.GG only ever returns tiers 3/4/5 for ARAM augments - verified
-    across five champions - so those three are the entire scale and the
-    best of them is the top rank."""
-    assert tier_rank(tier) == expected
+    across five champions - so those three are the entire scale. Without a
+    performance score to compare within tier 3, nothing can be singled out
+    as OP, so it falls back to the plain tier mapping."""
+    assert augment_rank(tier, performance=None, tier3_best=None) == expected
 
 
-def test_tier_rank_of_an_unrated_augment_is_nothing():
-    assert tier_rank(None) is None
+def test_augment_rank_of_an_unrated_augment_is_nothing():
+    assert augment_rank(None, performance=None, tier3_best=None) is None
+
+
+def test_the_top_tier_3_performer_is_op():
+    """Checked live: tier-3 performance genuinely spreads (Viego 72.1-88.0,
+    Garen 63.2-81.8), so the very best of it is worth calling out rather
+    than lumping it in with the rest of S."""
+    assert augment_rank(tier=3, performance=88.0, tier3_best=88.0) == "OP"
+
+
+def test_a_tied_top_performer_is_also_op():
+    assert augment_rank(tier=3, performance=87.5, tier3_best=88.0) == "OP"
+
+
+def test_a_merely_good_tier_3_augment_is_s_not_op():
+    assert augment_rank(tier=3, performance=72.1, tier3_best=88.0) == "S"
+
+
+def test_performance_never_promotes_across_tiers():
+    """Tier 5 (the worst bucket) includes augments scoring well above tier
+    3's real range - up to 170 against tier 3's ~88 max, checked live - a
+    low-sample-size artifact, not genuine strength. A tier-5 augment must
+    never outrank a tier-3 one just because its raw performance number is
+    higher.
+    """
+    assert augment_rank(tier=5, performance=170.0, tier3_best=88.0) == "B"
 
 
 def test_lower_tier_numbers_are_better(monkeypatch):
     """Guards the direction of the comparison. OP.GG's numeric tier runs
     best-to-worst (T3 outperforms T5 on their own performance scores), so
     an inverted comparison here would recommend the worst card on offer.
+    No performance data is supplied, so the tier-3 candidate reads as
+    plain S rather than OP - see test_two_tier_3_cards_in_the_same_offer_*
+    for the OP carve-out itself.
     """
     _patch_identification(
         monkeypatch,
@@ -60,6 +89,48 @@ def test_lower_tier_numbers_are_better(monkeypatch):
     assert recommendation["best_slot"] == 1
     assert recommendation["augments"][1]["rank"] == "S"
     assert [augment["rank"] for augment in recommendation["augments"]] == ["B", "S", "A"]
+
+
+def test_two_tier_3_cards_in_the_same_offer_break_the_tie_by_performance(monkeypatch):
+    """Tier alone can't pick a winner between two tier-3 cards offered
+    together - the weaker of the two must not tie for best."""
+    _patch_identification(
+        monkeypatch,
+        per_slot_candidates=[[1], [2], []],
+        tier_data={1: {"tier": 3, "performance": 72.1}, 2: {"tier": 3, "performance": 88.0}},
+    )
+    feature = make_feature()
+    feature._champ_name_to_id = {"Ahri": 103}
+
+    recommendation = feature._build_recommendation("Ahri")
+
+    assert recommendation["best_slot"] == 1
+    assert recommendation["augments"][0]["rank"] == "S"
+    assert recommendation["augments"][1]["rank"] == "OP"
+
+
+# -- justification text --
+
+
+def test_justification_cites_the_champion_and_real_score():
+    text = augment_justification("Viego", "OP", 88.0)
+
+    assert "Viego" in text
+    assert "88" in text
+
+
+def test_justification_for_each_rank_is_distinct():
+    """Each rank should read as a different level of endorsement, not
+    interchangeable copy."""
+    texts = {rank: augment_justification("Viego", rank, 80.0) for rank in ("OP", "S", "A", "B")}
+
+    assert len(set(texts.values())) == 4
+
+
+def test_justification_for_an_unrated_augment_says_why_without_a_score():
+    text = augment_justification("Viego", None, None)
+
+    assert "Viego" in text
 
 
 # -- _resolve_candidates: the ambiguity policy --

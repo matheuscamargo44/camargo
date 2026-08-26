@@ -8,30 +8,36 @@ function renderBadges(payload) {
   for (const badge of badges) {
     const el = document.createElement("div");
     el.className = "aram-badge" + (badge.isBest ? " is-best" : "");
-    // Anchored just below the card, horizontally centered on it.
+    // Anchored above the card (bottom-anchored so the box grows upward,
+    // regardless of how many lines the justification wraps to),
+    // horizontally centered on it.
     el.style.left = `${(badge.x + badge.w / 2) * 100}vw`;
-    el.style.top = `${(badge.y + badge.h) * 100}vh`;
-    el.style.transform = "translateX(-50%)";
+    el.style.bottom = `${(1 - badge.y) * 100}vh`;
+    el.style.transform = "translate(-50%, -10px)";
+
+    const header = document.createElement("div");
+    header.className = "aram-badge-header";
 
     if (badge.iconUrl) {
       const icon = document.createElement("img");
       icon.className = "aram-badge-icon";
       icon.src = badge.iconUrl;
       icon.alt = "";
-      el.appendChild(icon);
+      header.appendChild(icon);
     }
 
     // No name means several augments share this exact art and we can't
     // tell which one it is - the icon is still correct, so show it without
     // claiming a name.
     const name = document.createElement("span");
+    name.className = "aram-badge-name";
     if (badge.name) {
       name.textContent = badge.name;
     } else {
       name.textContent = "Unknown";
-      name.className = "aram-badge-unknown";
+      name.classList.add("aram-badge-unknown");
     }
-    el.appendChild(name);
+    header.appendChild(name);
 
     if (badge.rank) {
       const rank = document.createElement("span");
@@ -39,7 +45,16 @@ function renderBadges(payload) {
       // to compare three badges.
       rank.className = `aram-badge-rank rank-${badge.rank.toLowerCase()}`;
       rank.textContent = badge.rank;
-      el.appendChild(rank);
+      header.appendChild(rank);
+    }
+
+    el.appendChild(header);
+
+    if (badge.justification) {
+      const justification = document.createElement("div");
+      justification.className = "aram-badge-justification";
+      justification.textContent = badge.justification;
+      el.appendChild(justification);
     }
 
     container.appendChild(el);

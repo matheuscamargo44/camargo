@@ -30,6 +30,7 @@ function buildBadges(recommendation) {
         iconUrl: augment.icon_url,
         tier: augment.tier,
         rank: augment.rank ?? null,
+        justification: augment.justification ?? null,
         ambiguous: Boolean(augment.ambiguous),
         isBest: region.slot === recommendation.best_slot,
       };
@@ -55,7 +56,11 @@ async function pollOnce() {
   }
 
   // Avoid re-sending the same badges every 600ms while nothing changed.
-  const key = `${recommendation.trigger}:${recommendation.champion}`;
+  // Keyed on the actual identified augments (not just champion) - the
+  // recommendation has no "trigger" field to key on once the picker's
+  // presence is detected directly rather than inferred from level-ups,
+  // and the same champion can still get a genuinely different offer.
+  const key = (recommendation.augments || []).map((a) => `${a.slot}:${a.augment_id}`).join(",");
   if (key === lastRegionKey) return;
   lastRegionKey = key;
 

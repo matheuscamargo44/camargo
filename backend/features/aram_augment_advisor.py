@@ -39,15 +39,72 @@ ARAM_MAYHEM_GAME_MODE = "KIWI"
 #: verified against performance scores per champion (Viego: T3 averages
 #: 79.5, T4 78.5, T5 76.6) and against the shape of the distribution, where
 #: T3 is rare and T5 is the bulk. Only 3/4/5 are ever returned, checked
-#: across five champions, so the three of them are the whole scale and the
-#: best one earns the top rank.
+#: across five champions, so the three of them are the whole scale.
 TIER_RANKS = {3: "S", 4: "A", 5: "B"}
 
+#: Within tier 3 there is real spread - checked live, Viego's tier-3
+#: performance runs 72.1 to 88.0, Garen's 63.2 to 81.8 - so the very best
+#: of it earns its own rank rather than being lumped in with the rest of S.
+#: A candidate within this many performance points of the champion's best
+#: tier-3 score counts as tied for OP.
+OP_PERFORMANCE_MARGIN = 1.0
 
-def tier_rank(tier):
-    """Letter rank for display. Numeric tier stays the sort key; this is
-    presentation only."""
+
+def _tier3_best_performance(tier_data):
+    scores = [
+        entry.get("performance")
+        for entry in tier_data.values()
+        if entry.get("tier") == 3 and entry.get("performance") is not None
+    ]
+    return max(scores) if scores else None
+
+
+def augment_rank(tier, performance, tier3_best):
+    """Letter rank for display. `performance` only ever breaks a tie
+    *within* tier 3, to carve OP out of S - never compared across tiers.
+
+    Checked live: tier 5 (the worst bucket) includes augments scoring well
+    above tier 3's real range (up to 170, against tier 3's max of ~88) -
+    a low-sample-size artifact, not genuine strength. OP.GG's own tier
+    already accounts for that (verified: mean performance drops cleanly
+    from tier 3 to 5), so it stays the primary signal and performance is
+    only trusted to compare augments the tier already agrees are the best.
+    """
+    if tier == 3 and performance is not None and tier3_best is not None and tier3_best - performance <= OP_PERFORMANCE_MARGIN:
+        return "OP"
     return TIER_RANKS.get(tier)
+
+
+_RANK_JUSTIFICATIONS = {
+    "OP": "The best tier-3 augment for {champion}.",
+    "S": "A top-tier augment for {champion}.",
+    "A": "A solid augment for {champion}.",
+    "B": "Below the stronger options for {champion}.",
+}
+
+
+def augment_justification(champion_name, rank, performance):
+    """Short, honest reasoning grounded in OP.GG's real per-champion data.
+
+    There is no textual "why" from OP.GG for augments - `desc` is just the
+    augment's own generic description, the same text already on the card,
+    not champion-specific reasoning. So this sticks to what's actually
+    known: the tier grade and the real performance score. No invented
+    flavor text about synergy or mechanics we have no data for.
+
+    The score is only ever appended for OP/S (tier 3): that is the one
+    tier where performance is trusted at all (see augment_rank), so it is
+    the only place where the number means what it looks like it means.
+    Showing it next to an A/B card would be actively misleading - checked
+    live, a tier-5 "B" augment can score 170, well above a tier-3 "OP" at
+    88, since performance is not comparable across tiers.
+    """
+    if rank is None:
+        return f"Not among the stronger augments for {champion_name} in this data."
+    text = _RANK_JUSTIFICATIONS[rank].format(champion=champion_name)
+    if rank in ("OP", "S") and performance is not None:
+        text += f" (score {performance:.0f})"
+    return text
 
 #: The gold border is drawn before the icons finish fading in, so give the
 #: picker a moment to settle, then confirm it's still open before capturing.
@@ -193,11 +250,19 @@ class AramAugmentAdvisor(ThreadedFeature):
 
         champion_id = self._champion_id_for(champion_name)
         tier_data = self._tier_data_for_champion(champion_id) if champion_id else {}
+        tier3_best = _tier3_best_performance(tier_data)
 
         augments = []
-        best_slot, best_tier = None, None
+        best_slot, best_key = None, None
         for entry in identified:
             augment_id, tier, ambiguous = self._resolve_candidates(entry["candidates"], tier_data)
+            performance = tier_data.get(augment_id, {}).get("performance") if tier is not None else None
+            rank = None if ambiguous else augment_rank(tier, performance, tier3_best)
+            justification = (
+                "Several augments share this exact icon, so which one this is can't be told for sure."
+                if ambiguous
+                else augment_justification(champion_name, rank, performance)
+            )
             augments.append(
                 {
                     "slot": entry["slot"],
@@ -209,14 +274,19 @@ class AramAugmentAdvisor(ThreadedFeature):
                     "name": None if ambiguous else augment_catalog.name(augment_id),
                     "icon_url": augment_catalog.icon_url(augment_id),
                     "tier": tier,
-                    "rank": tier_rank(tier),
+                    "rank": rank,
+                    "justification": justification,
                     "ambiguous": ambiguous,
                 }
             )
-            # Lower tier number is better (1 = OP), matching every other
-            # OP.GG tier field already used in this codebase.
-            if tier is not None and (best_tier is None or tier < best_tier):
-                best_slot, best_tier = entry["slot"], tier
+            # Lower tier number is better, matching every other OP.GG tier
+            # field already used in this codebase; performance only breaks
+            # a tie within the same tier (e.g. OP vs a plain S offered
+            # together), never crosses tiers - see augment_rank().
+            if tier is not None:
+                key = (tier, -(performance or 0))
+                if best_key is None or key < best_key:
+                    best_slot, best_key = entry["slot"], key
 
         return {
             "active": True,

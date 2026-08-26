@@ -313,3 +313,36 @@ Also added a capture retry (`CAPTURE_ATTEMPTS = 3` in `_on_picker_opened`): a ca
 half-drawn frame can legitimately identify nothing even with the picker genuinely open, so it's retried a
 couple of times (same `CAPTURE_SETTLE_SECONDS` spacing) before giving up on that pick window, instead of
 one miss meaning no recommendation for the whole card screen.
+
+### OP tier and per-card justification (2026-08-25)
+
+Two follow-up requests: does the recommendation account for the champion (yes, already did - the tier
+lookup is per-champion), and could it call out a top "OP" tier above S with a stated reason per card.
+
+**OP tier**: checked live whether tier 3 itself has real internal spread before adding anything - it does
+(Viego's tier-3 performance runs 72.1-88.0, Garen's 63.2-81.8), so the single best-performing tier-3
+augment for that champion (or any tied within `OP_PERFORMANCE_MARGIN = 1.0`) now reads as `OP`, the rest
+of tier 3 stays `S`. Deliberately **not** implemented as a global performance sort: tier 5 (the worst
+bucket) includes augments scoring well above tier 3's real range - checked live, up to 170 against tier
+3's ~88 max, a low-sample-size artifact rather than genuine strength. Comparing performance is only ever
+done *within* a tier OP.GG has already put in the same bucket, never across tiers - seeded a specific
+regression test (`test_performance_never_promotes_across_tiers`) for that.
+
+**Justification text**: OP.GG has no textual "why" for augments - the `desc` field that exists (confirmed
+live, and it comes back correctly localized for `lang=pt_BR`) is just the augment's own generic
+description, the same text already printed on the card, not champion-specific reasoning. So the
+justification only ever states what's actually known: the tier grade in words, plus the real performance
+score - but **only for OP/S**, where performance is the trustworthy signal. Appending it to an A/B card
+would be misleading given the cross-tier noise above (a genuine live example: a "B" tier-5 card scoring
+170 sitting next to an "OP" tier-3 card scoring 88 - showing both numbers invites exactly the wrong
+conclusion). No invented flavor text about synergy or mechanics - there is no data to back that.
+
+**Badge position**: moved from below the card's icon (where it visually collided with the card's own
+name/description text, confirmed in a real screenshot) to above the whole card, bottom-anchored in CSS so
+the box grows upward regardless of how many lines the justification wraps to.
+
+**Dead field cleanup**: `recommendation.trigger` was left over from the level-based trigger design,
+already replaced by direct picker detection - the frontend's dedup key was still referencing it (silently
+becoming `"undefined:<champion>"`). Fixed to key on the actual identified augment ids, which also fixes a
+real bug: the same champion getting a second, genuinely different offer (e.g. after a reroll) would have
+been silently skipped as "already shown".

@@ -81,10 +81,9 @@ describe("initAramOverlayController", () => {
     expect(hideAramOverlay).toHaveBeenCalled();
   });
 
-  it("passes badge fraction coordinates through unchanged and flags the OP.GG best slot", async () => {
+  it("passes badge fraction coordinates and justification through unchanged, and flags the best slot", async () => {
     const recommendation = {
       active: true,
-      trigger: "start",
       champion: "Ahri",
       best_slot: 1,
       regions: [
@@ -93,10 +92,37 @@ describe("initAramOverlayController", () => {
         { slot: 2, x: 0.7, y: 0.5, w: 0.08, h: 0.12 },
       ],
       augments: [
-        { slot: 0, augment_id: 1, name: "Augment A", icon_url: "http://icon/1", tier: 4, rank: "A", ambiguous: false },
-        { slot: 1, augment_id: 2, name: "Augment B", icon_url: "http://icon/2", tier: 3, rank: "S", ambiguous: false },
+        {
+          slot: 0,
+          augment_id: 1,
+          name: "Augment A",
+          icon_url: "http://icon/1",
+          tier: 4,
+          rank: "A",
+          justification: "A solid augment for Ahri.",
+          ambiguous: false,
+        },
+        {
+          slot: 1,
+          augment_id: 2,
+          name: "Augment B",
+          icon_url: "http://icon/2",
+          tier: 3,
+          rank: "S",
+          justification: "A top-tier augment for Ahri. (score 82)",
+          ambiguous: false,
+        },
         // Several augments share this art, so the backend sends no name.
-        { slot: 2, augment_id: 3, name: null, icon_url: "http://icon/3", tier: null, rank: null, ambiguous: true },
+        {
+          slot: 2,
+          augment_id: 3,
+          name: null,
+          icon_url: "http://icon/3",
+          tier: null,
+          rank: null,
+          justification: "Several augments share this exact icon, so which one this is can't be told for sure.",
+          ambiguous: true,
+        },
       ],
     };
     const fetchFeatureStatus = vi.fn().mockResolvedValue({ recommendation });
@@ -109,16 +135,85 @@ describe("initAramOverlayController", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(showAramOverlay).toHaveBeenCalledWith([
-      { slot: 0, x: 0.1, y: 0.5, w: 0.08, h: 0.12, name: "Augment A", iconUrl: "http://icon/1", tier: 4, rank: "A", ambiguous: false, isBest: false },
-      { slot: 1, x: 0.4, y: 0.5, w: 0.08, h: 0.12, name: "Augment B", iconUrl: "http://icon/2", tier: 3, rank: "S", ambiguous: false, isBest: true },
-      { slot: 2, x: 0.7, y: 0.5, w: 0.08, h: 0.12, name: null, iconUrl: "http://icon/3", tier: null, rank: null, ambiguous: true, isBest: false },
+      {
+        slot: 0,
+        x: 0.1,
+        y: 0.5,
+        w: 0.08,
+        h: 0.12,
+        name: "Augment A",
+        iconUrl: "http://icon/1",
+        tier: 4,
+        rank: "A",
+        justification: "A solid augment for Ahri.",
+        ambiguous: false,
+        isBest: false,
+      },
+      {
+        slot: 1,
+        x: 0.4,
+        y: 0.5,
+        w: 0.08,
+        h: 0.12,
+        name: "Augment B",
+        iconUrl: "http://icon/2",
+        tier: 3,
+        rank: "S",
+        justification: "A top-tier augment for Ahri. (score 82)",
+        ambiguous: false,
+        isBest: true,
+      },
+      {
+        slot: 2,
+        x: 0.7,
+        y: 0.5,
+        w: 0.08,
+        h: 0.12,
+        name: null,
+        iconUrl: "http://icon/3",
+        tier: null,
+        rank: null,
+        justification: "Several augments share this exact icon, so which one this is can't be told for sure.",
+        ambiguous: true,
+        isBest: false,
+      },
     ]);
   });
 
-  it("hides the overlay once the recommendation is no longer active (TTL expiry on the backend)", async () => {
+  it("re-sends when the same champion gets a genuinely different offer", async () => {
+    /* The dedup key used to be trigger+champion; a second real offer for
+       the same champion (e.g. after a reroll) would have been silently
+       skipped as "already shown". */
+    const first = {
+      active: true,
+      champion: "Ahri",
+      best_slot: null,
+      regions: [{ slot: 0, x: 0.1, y: 0.5, w: 0.08, h: 0.12 }],
+      augments: [{ slot: 0, augment_id: 1, name: "A", icon_url: "u", tier: 4, rank: "A", justification: "", ambiguous: false }],
+    };
+    const second = {
+      ...first,
+      augments: [{ slot: 0, augment_id: 99, name: "B", icon_url: "u", tier: 3, rank: "S", justification: "", ambiguous: false }],
+    };
+    const fetchFeatureStatus = vi.fn().mockResolvedValueOnce({ recommendation: first }).mockResolvedValue({ recommendation: second });
+    const { emitFeatures, showAramOverlay } = await loadControllerWithMocks({
+      fetchFeatureStatus,
+      isLeagueConnected: () => true,
+    });
+
+    emitFeatures({ aram_augment_advisor: { enabled: true } });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(600);
+
+    expect(showAramOverlay).toHaveBeenCalledTimes(2);
+  });
+
+  it("hides the overlay once the recommendation is no longer active", async () => {
     const fetchFeatureStatus = vi
       .fn()
-      .mockResolvedValueOnce({ recommendation: { active: true, trigger: "start", champion: "Ahri", best_slot: null, regions: [], augments: [] } })
+      .mockResolvedValueOnce({
+        recommendation: { active: true, champion: "Ahri", best_slot: null, regions: [], augments: [] },
+      })
       .mockResolvedValue({ recommendation: null });
     const { emitFeatures, hideAramOverlay } = await loadControllerWithMocks({
       fetchFeatureStatus,
