@@ -55,6 +55,14 @@ class ActivityLog(logging.Handler):
             if previous is not None and _same_event(previous, entry):
                 previous["count"] = previous.get("count", 1) + 1
                 previous["ts"] = entry["ts"]
+                # Without a fresh seq, `entries(after=N)` - what the /logs
+                # poll and the renderer actually use - never sees this
+                # entry again once its first appearance has been fetched:
+                # a repeating failure would show one frozen line with the
+                # count stuck at 1, for the entire duration of the failure
+                # it exists to surface.
+                previous["seq"] = self._next_seq
+                self._next_seq += 1
                 return
 
             entry["seq"] = self._next_seq

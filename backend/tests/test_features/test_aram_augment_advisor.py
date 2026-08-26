@@ -294,6 +294,43 @@ def test_an_ambiguous_slot_cannot_win_best(monkeypatch):
     assert recommendation["best_slot"] == 1
 
 
+def test_an_unmapped_tier_cannot_win_best_even_though_it_has_a_number(monkeypatch):
+    """An out-of-range tier value (not in TIER_RANKS) reads as unrated - it
+    must not still be eligible to win "best" while its own justification
+    text says there's no data for it."""
+    _patch_identification(
+        monkeypatch,
+        per_slot_candidates=[[1], [2], []],
+        tier_data={1: {"tier": 99, "performance": 999}, 2: {"tier": 4}},
+    )
+    feature = make_feature()
+    feature._champ_name_to_id = {"Ahri": 103}
+
+    recommendation = feature._build_recommendation("Ahri")
+
+    assert recommendation["augments"][0]["rank"] is None
+    assert recommendation["best_slot"] == 1
+
+
+def test_an_ambiguous_card_does_not_assert_a_specific_rarity(monkeypatch):
+    """Mirrors `name` being nulled for the same case: an ambiguous card's
+    identity isn't known, so neither is a specific property of it - showing
+    a definite rarity here would be a coin flip presented as fact."""
+    _patch_identification(
+        monkeypatch,
+        per_slot_candidates=[[1, 9], [2], []],
+        tier_data={1: {"tier": 1}, 9: {"tier": 5}, 2: {"tier": 3}},
+    )
+    feature = make_feature()
+    feature._champ_name_to_id = {"Ahri": 103}
+
+    recommendation = feature._build_recommendation("Ahri")
+
+    assert recommendation["augments"][0]["ambiguous"] is True
+    assert recommendation["augments"][0]["name"] is None
+    assert recommendation["augments"][0]["rarity"] is None
+
+
 def test_nothing_identified_yields_no_recommendation(monkeypatch):
     """A capture that matches nothing must produce no badge at all rather
     than a guess."""
@@ -354,6 +391,37 @@ def test_tier_data_is_fetched_once_per_champion(monkeypatch):
     feature._build_recommendation("Ahri")
 
     assert calls == [103]
+
+
+def test_an_empty_lookup_result_is_not_cached_and_is_retried(monkeypatch):
+    """A transient failure (both the scrape and the MCP fallback come back
+    empty) must not be trusted as "this champion genuinely has no data" for
+    the rest of the match - that would disable augment data for every later
+    pick (level 11, 15) from one bad network moment on the first."""
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "capture_region", lambda box: object())
+    monkeypatch.setattr(module.augment_catalog, "identify", lambda image: [1])
+    monkeypatch.setattr(module.augment_catalog, "name", lambda augment_id: "A")
+    monkeypatch.setattr(module.augment_catalog, "icon_url", lambda augment_id: "u")
+    monkeypatch.setattr(module.augment_catalog, "rarity", lambda augment_id: "kGold")
+
+    calls = []
+
+    def fake_lookup(champion_id):
+        calls.append(champion_id)
+        return {} if len(calls) == 1 else {1: {"tier": 3}}
+
+    monkeypatch.setattr(module.opgg_client, "get_aram_augments", fake_lookup)
+
+    feature = make_feature()
+    feature._champ_name_to_id = {"Ahri": 103}
+    first = feature._build_recommendation("Ahri")
+    second = feature._build_recommendation("Ahri")
+
+    assert calls == [103, 103]  # retried, not served from a cached {}
+    assert first["augments"][0]["rank"] is None
+    assert second["augments"][0]["rank"] == "A"
 
 
 # -- _tier_data_for_champion: scraping OP.GG's own site first, MCP as fallback --
@@ -527,7 +595,7 @@ def test_a_failed_capture_is_retried_before_giving_up(monkeypatch):
 
     def fake_build_recommendation(self, champion_name):
         attempts["n"] += 1
-        return None if attempts["n"] < 3 else {"active": True, "best_slot": None}
+        return None if attempts["n"] < 3 else {"active": True, "best_slot": None, "augments": [1, 2, 3]}
 
     monkeypatch.setattr(module.AramAugmentAdvisor, "_build_recommendation", fake_build_recommendation)
 
@@ -535,7 +603,7 @@ def test_a_failed_capture_is_retried_before_giving_up(monkeypatch):
     feature._on_picker_opened("Ahri")
 
     assert attempts["n"] == 3
-    assert feature._recommendation == {"active": True, "best_slot": None}
+    assert feature._recommendation == {"active": True, "best_slot": None, "augments": [1, 2, 3]}
 
 
 def test_gives_up_after_exhausting_capture_attempts(monkeypatch):
@@ -548,6 +616,107 @@ def test_gives_up_after_exhausting_capture_attempts(monkeypatch):
     feature._on_picker_opened("Ahri")
 
     assert feature._recommendation is None
+
+
+def test_a_single_false_picker_reading_during_settle_does_not_abandon_the_whole_pick(monkeypatch):
+    """picker_is_open() reading False on one settle check used to return
+    from the whole function immediately, permanently skipping this pick -
+    even though the picker was still genuinely open a moment later. It must
+    be treated as one failed attempt, not a final answer."""
+    import features.aram_augment_advisor as module
+
+    reads = iter([False, True, True])
+    monkeypatch.setattr(module, "picker_is_open", lambda: next(reads))
+    monkeypatch.setattr(
+        module.AramAugmentAdvisor,
+        "_build_recommendation",
+        lambda self, name: {"active": True, "best_slot": None, "augments": [1, 2, 3]},
+    )
+
+    feature = make_feature()
+    feature._on_picker_opened("Ahri")
+
+    assert feature._recommendation == {"active": True, "best_slot": None, "augments": [1, 2, 3]}
+
+
+def test_a_partial_capture_keeps_trying_for_a_complete_one(monkeypatch):
+    """A capture that only identified 2 of 3 cards (one still fading in)
+    used to be accepted immediately - potentially confidently recommending
+    the second-best of only 2 seen cards while the unread third was
+    actually the best. It should try again for a complete read first."""
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "picker_is_open", lambda: True)
+    attempts = {"n": 0}
+
+    def fake_build_recommendation(self, champion_name):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            return {"active": True, "best_slot": 1, "augments": [1, 2]}  # partial
+        return {"active": True, "best_slot": 0, "augments": [1, 2, 3]}  # complete
+
+    monkeypatch.setattr(module.AramAugmentAdvisor, "_build_recommendation", fake_build_recommendation)
+
+    feature = make_feature()
+    feature._on_picker_opened("Ahri")
+
+    assert attempts["n"] == 2  # stopped retrying once a complete read landed
+    assert feature._recommendation == {"active": True, "best_slot": 0, "augments": [1, 2, 3]}
+
+
+def test_a_partial_capture_is_used_as_a_fallback_if_never_completed(monkeypatch):
+    """Better than nothing: if every attempt only ever sees a partial
+    offer, the last one is still shown rather than no recommendation at
+    all."""
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "picker_is_open", lambda: True)
+    monkeypatch.setattr(
+        module.AramAugmentAdvisor,
+        "_build_recommendation",
+        lambda self, name: {"active": True, "best_slot": 1, "augments": [1, 2]},
+    )
+
+    feature = make_feature()
+    feature._on_picker_opened("Ahri")
+
+    assert feature._recommendation == {"active": True, "best_slot": 1, "augments": [1, 2]}
+
+
+# -- _handle_gameflow_phase: only a confirmed phase change resets state --
+
+
+def test_a_confirmed_different_phase_resets_state():
+    feature = make_feature()
+    feature._recommendation = {"active": True}
+    feature._picker_was_open = True
+
+    still_relevant = feature._handle_gameflow_phase("Lobby")
+
+    assert still_relevant is False
+    assert feature._recommendation is None
+    assert feature._picker_was_open is False
+
+
+def test_a_failed_phase_read_does_not_reset_a_live_recommendation():
+    """phase is None only when the LCU request itself failed - a transient
+    hiccup, not confirmation the game ended - so it must not wipe a
+    recommendation the player is actively looking at mid-pick."""
+    feature = make_feature()
+    feature._recommendation = {"active": True}
+    feature._picker_was_open = True
+
+    still_relevant = feature._handle_gameflow_phase(None)
+
+    assert still_relevant is False  # still skips the rest of this tick
+    assert feature._recommendation == {"active": True}  # but doesn't wipe it
+    assert feature._picker_was_open is True
+
+
+def test_in_progress_phase_lets_the_tick_continue():
+    feature = make_feature()
+
+    assert feature._handle_gameflow_phase("InProgress") is True
 
 
 def test_get_status_shape_when_idle():

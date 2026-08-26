@@ -61,6 +61,27 @@ def test_repeats_collapse_into_a_counter():
     assert entries[1]["count"] == 1
 
 
+def test_a_collapsing_repeat_still_shows_up_in_an_incremental_poll():
+    """The /logs endpoint and the renderer only ever fetch entries with
+    seq > last-seen (test_polling_returns_only_new_entries below) - a
+    repeat that updates its counter without a fresh seq would be fetched
+    once and then never again, freezing the visible count at 1 for the
+    entire duration of a repeating failure."""
+    log = ActivityLog()
+    log.emit(make_record("client unreachable", logging.WARNING))
+
+    first_batch = log.entries(after=0)
+    assert len(first_batch) == 1
+    last_seen = first_batch[-1]["seq"]
+
+    for _ in range(9):
+        log.emit(make_record("client unreachable", logging.WARNING))
+
+    next_batch = log.entries(after=last_seen)
+    assert len(next_batch) == 1
+    assert next_batch[0]["count"] == 10
+
+
 def test_drops_the_oldest_when_full():
     log = ActivityLog(capacity=3)
     for i in range(6):

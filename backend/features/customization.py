@@ -148,7 +148,10 @@ class Badges(Feature):
             challenge_ids = [glitched_id] * 3
 
         payload = {"challengeIds": challenge_ids}
-        title_id = data.get("title", {}).get("itemId", -1)
+        # The LCU returns "title": null (not a missing key) for a player
+        # with no challenge title equipped - the {} default only covers a
+        # missing key, so `or {}` is needed to also catch the null case.
+        title_id = (data.get("title") or {}).get("itemId", -1)
         banner_id = data.get("bannerId", "")
         if title_id != -1:
             payload["title"] = str(title_id)

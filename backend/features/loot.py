@@ -23,7 +23,10 @@ class MassDisenchant(Feature):
                     loot_list = res.json()
                     for item in loot_list:
                         item_type = item.get("type", "")
-                        loot_id = item.get("lootId", "")
+                        # .get(..., "") only covers a missing key - the LCU
+                        # can also return "lootId": null, which the default
+                        # doesn't catch and which crashes .startswith()/.lower().
+                        loot_id = item.get("lootId") or ""
                         count = int(item.get("count", 1))
 
                         if item_type in ("CHAMPION_RENTAL", "CHAMPION"):
@@ -95,7 +98,7 @@ class MassDisenchant(Feature):
                 keys_available = int(item.get("count", 0))
 
         for item in loot_list:
-            loot_id = item.get("lootId", "")
+            loot_id = item.get("lootId") or ""
             item_type = item.get("type", "")
             count = int(item.get("count", 0))
 

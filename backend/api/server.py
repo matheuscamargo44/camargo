@@ -18,9 +18,14 @@ install_activity_log()
 
 app = FastAPI(title="Camargo backend")
 
-#: The renderer is loaded from file://, so its requests carry `Origin: null`.
-#: Listing it explicitly (instead of "*") keeps an ordinary web page from
-#: reading responses even if it somehow learned the token.
+#: The renderer is loaded from file://, so its requests carry `Origin: null`
+#: - this entry exists so our own renderer can read its own backend's
+#: responses at all, not as a security boundary. It provides none: `Origin:
+#: null` is exactly what a sandboxed iframe (`<iframe sandbox="allow-
+#: scripts">`) or a data:/blob: document sends too, so any web page can
+#: trivially match this allowlist. The real (and only) defense against an
+#: unauthorized caller is the bearer token checked below, independent of
+#: CORS/origin entirely.
 ALLOWED_ORIGINS = ["null"]
 
 @app.middleware("http")

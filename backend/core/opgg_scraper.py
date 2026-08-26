@@ -79,16 +79,18 @@ def scrape_aram_augments(champion_alias: str) -> dict:
         logger.debug("failed to fetch OP.GG augments page for %s", champion_alias, exc_info=True)
         return {}
 
-    try:
-        augments = {}
-        for match in _ENTRY_RE.finditer(response.text):
+    augments = {}
+    for match in _ENTRY_RE.finditer(response.text):
+        # Per-entry, not wrapping the whole loop: one malformed numeric
+        # token (e.g. a stray "1.2.3" the [\d.]+ performance group can
+        # match) used to raise out of the loop and discard every entry
+        # already parsed - up to 199 good rows lost over one bad one.
+        try:
             augment_id = int(match.group(1))
-            augments[augment_id] = {
-                "id": augment_id,
-                "tier": int(match.group(2)),
-                "performance": float(match.group(3)),
-            }
-        return augments
-    except Exception:
-        logger.exception("failed to parse OP.GG augments page for %s", champion_alias)
-        return {}
+            tier = int(match.group(2))
+            performance = float(match.group(3))
+        except ValueError:
+            logger.debug("skipping a malformed OP.GG augment entry for %s: %r", champion_alias, match.group(0))
+            continue
+        augments[augment_id] = {"id": augment_id, "tier": tier, "performance": performance}
+    return augments

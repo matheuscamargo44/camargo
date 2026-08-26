@@ -254,9 +254,18 @@ export function buildFeatureCard(meta, initialStatus) {
   function applyConnectionState(connected) {
     rowEl.classList.toggle("league-disconnected", !connected);
     for (const { button } of toggleButtons) {
+      // A button mid-toggle/action marks itself busy (see buildToggleControl
+      // / buildActionControl) precisely so this periodic poll - which used
+      // to unconditionally clear `disabled` here - can't re-enable it while
+      // the in-flight call is still running. A bulk action (mass loot,
+      // disenchant) can easily outlast the 4s poll interval; without this,
+      // the next poll cleared the busy button's `disabled` mid-action and a
+      // second click fired the same action again.
+      if (button.dataset.busy === "true") continue;
       button.disabled = !connected;
     }
     for (const btn of actionButtons) {
+      if (btn.dataset.busy === "true") continue;
       btn.disabled = !connected;
     }
   }
@@ -290,6 +299,7 @@ function buildToggleControl(key, toggleDef, initialStatus, showLabel = false, ga
   const button = toggleSwitch(checked, async () => {
     if (!isFeatureConnected(game)) return;
     button.disabled = true;
+    button.dataset.busy = "true";
     try {
       if (toggleDef.action) {
         await callAction(key, toggleDef.action, {});
@@ -301,6 +311,7 @@ function buildToggleControl(key, toggleDef, initialStatus, showLabel = false, ga
       console.error(`toggle ${key} failed:`, error);
       reportClientError(`Toggling ${key} failed: ${error.message}`, error.stack, "toggle");
     } finally {
+      delete button.dataset.busy;
       button.disabled = !isFeatureConnected(game);
     }
   });
@@ -389,8 +400,11 @@ function buildActionControl(key, actionDef, game) {
 
       // Bulk actions (disenchanting, mass invites) can run for a while; keep
       // the button from firing twice and show that something is happening.
+      // dataset.busy also shields this from applyConnectionState's health
+      // poll, which used to re-enable the button mid-action regardless.
       button.disabled = true;
       button.classList.add("btn-busy");
+      button.dataset.busy = "true";
       try {
         if (actionDef.kind === "champion-list-editor") {
           const changed = await openChampionListEditor({
@@ -423,6 +437,7 @@ function buildActionControl(key, actionDef, game) {
         );
       } finally {
         button.classList.remove("btn-busy");
+        delete button.dataset.busy;
         button.disabled = !isFeatureConnected(game);
       }
     },

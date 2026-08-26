@@ -53,21 +53,26 @@ def detect_region():
     log_path = os.path.join(
         os.environ.get("LOCALAPPDATA", ""), "VALORANT", "Saved", "Logs", "ShooterGame.log"
     )
-    try:
-        with open(log_path, "rb") as log_file:
-            lines = log_file.readlines()
-    except OSError:
-        return None
-
+    # Streamed line-by-line rather than readlines(): this file routinely
+    # reaches tens of MB in a long session, and detect_region() runs on
+    # every ACTIVATION_TTL_SECONDS re-activation (every 5s whenever the
+    # region is left on "auto", the shipped default) - materializing the
+    # whole file into a list every time was a real, recurring allocation
+    # spike for a value that can't change while the game is running.
     for marker in (b"regions/", b"config/"):
-        for line in lines:
-            if marker in line:
-                try:
-                    region = line.split(marker)[1].split(b"]")[0].decode().strip().lower()
-                except (IndexError, UnicodeDecodeError):
-                    continue
-                if region in VALID_REGIONS:
-                    return region
+        try:
+            with open(log_path, "rb") as log_file:
+                for line in log_file:
+                    if marker not in line:
+                        continue
+                    try:
+                        region = line.split(marker)[1].split(b"]")[0].decode().strip().lower()
+                    except (IndexError, UnicodeDecodeError):
+                        continue
+                    if region in VALID_REGIONS:
+                        return region
+        except OSError:
+            return None
     return None
 
 
@@ -98,19 +103,27 @@ class ValorantClient:
             if self._client is not None and not force:
                 if time.monotonic() - self._activated_at < ACTIVATION_TTL_SECONDS:
                     return self._client
-
             region = self._region_override or detect_region()
-            if not region:
-                raise HandshakeError("Could not determine VALORANT's region")
 
-            try:
-                client = ValClient(region=region)
-                client.activate()
-            except HandshakeError:
-                raise
-            except Exception as exc:
-                raise HandshakeError(str(exc)) from exc
+        if not region:
+            raise HandshakeError("Could not determine VALORANT's region")
 
+        # client.activate() is a third-party, timeout-less HTTP call to a
+        # remote host (valclient's own version lookup) - deliberately done
+        # outside the lock. Holding the lock across it meant one hung
+        # request wedged every other VALORANT feature (and the /features
+        # endpoint's status fan-out) behind this same RLock indefinitely.
+        # Two callers racing past an expired TTL at once can both activate
+        # redundantly; that's a strictly better trade than freezing the UI.
+        try:
+            client = ValClient(region=region)
+            client.activate()
+        except HandshakeError:
+            raise
+        except Exception as exc:
+            raise HandshakeError(str(exc)) from exc
+
+        with self._lock:
             self._client = client
             self._activated_at = time.monotonic()
             return client

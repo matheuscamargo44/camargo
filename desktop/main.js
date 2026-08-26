@@ -241,13 +241,13 @@ ipcMain.handle("camargo:copy-text", (_event, text) => {
 // (see aram-overlay-controller.js) - these just relay "here's what to show
 // right now" to the overlay window, which never fetches anything itself.
 ipcMain.on("camargo:aram-overlay-show", (_event, payload) => {
-  if (!overlayWindow) return;
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
   overlayWindow.webContents.send("camargo:aram-overlay-render", payload);
   if (!overlayWindow.isVisible()) overlayWindow.showInactive();
 });
 
 ipcMain.on("camargo:aram-overlay-hide", () => {
-  if (overlayWindow) overlayWindow.hide();
+  if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
 });
 
 // -- in-app updates --
@@ -262,11 +262,19 @@ ipcMain.handle("camargo:update-download", () => updateManager?.download());
 
 ipcMain.handle("camargo:update-install", async () => {
   if (!updateManager) return false;
+  // Checked before stopping anything: install() itself no-ops outside the
+  // "ready" state, but stopping the backend first and only then finding
+  // out install() won't proceed left the app running with a dead backend
+  // and no watchdog - permanently, since stop() has no matching resume.
+  if (updateManager.getState().status !== "ready") return false;
   // The installer replaces files the backend exe is running from, and
   // quitAndInstall does not wait for async before-quit handlers - so stop
-  // the backend explicitly first.
+  // the backend explicitly first, and only proceed once that's confirmed:
+  // an unconfirmed stop (taskkill denied/failed) installing anyway could
+  // leave the old backend still bound to the port the new install needs.
   isQuitting = true;
-  await backendManager.stop();
+  const stopped = await backendManager.stop();
+  if (!stopped) return false;
   return updateManager.install();
 });
 
@@ -293,10 +301,21 @@ if (!gotSingleInstanceLock) {
 
   app.on("window-all-closed", () => {});
 
-  app.on("before-quit", async () => {
+  // Electron does not await an async "before-quit" listener - a plain
+  // `async () => { await backendManager.stop(); }` let the process exit
+  // while the backend was still mid-shutdown, potentially leaving it alive
+  // holding its port until the next launch's stale-process sweep. This
+  // defers the actual quit until stop() has settled, then re-issues it.
+  let readyToQuit = false;
+  app.on("before-quit", (event) => {
+    if (readyToQuit) return;
+    event.preventDefault();
     isQuitting = true;
     updateManager?.stop();
-    await backendManager.stop();
+    backendManager.stop().finally(() => {
+      readyToQuit = true;
+      app.quit();
+    });
   });
 }
 

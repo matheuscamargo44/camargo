@@ -69,7 +69,15 @@ export function renderCategoryScreen(root, { categories, excludeKeys = [] }) {
     });
   }
 
-  build(getFeatureMeta());
+  // onFeatureMetaUpdate immediately invokes its callback with whatever
+  // metadata is already cached (see state.js) - calling build() here too
+  // in that case built every card (and kicked off each one's DDragon/
+  // valorant-api asset backfill) twice in a row for identical data. Only
+  // needed as a direct call for the genuinely-empty case, to show the
+  // loading placeholder before metadata has ever arrived at all.
+  if (getFeatureMeta().length === 0) {
+    build([]);
+  }
   const unsubscribeMeta = onFeatureMetaUpdate(build);
 
   return () => {

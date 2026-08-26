@@ -29,9 +29,53 @@ export function profileIconUrl(iconId, version = cachedVersion) {
   return `https://ddragon.leagueoflegends.com/cdn/${version}/img/profileicon/${iconId}.png`;
 }
 
+const CHAMPIONS_URL = (version) =>
+  `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion.json`;
+let championIdByName = null;
+let championIdMapPromise = null;
+
+// Riot's DataDragon *id* (the actual image filename stem) often differs
+// from the champion's display name - Wukong -> MonkeyKing, Nunu & Willump
+// -> Nunu, Cho'Gath -> Chogath, Kai'Sa -> Kaisa, Kha'Zix -> Khazix, Vel'Koz
+// -> Velkoz, Bel'Veth -> Belveth, Renata Glasc -> Renata, LeBlanc stays
+// LeBlanc. Stripping punctuation from the display name (the old approach)
+// gets every one of those wrong and 404s the icon. Fetched once and cached,
+// same pattern as getLatestVersion/getSkinsMap below.
+function ensureChampionIdMap() {
+  if (championIdByName) return Promise.resolve(championIdByName);
+  if (championIdMapPromise) return championIdMapPromise;
+
+  championIdMapPromise = getLatestVersion()
+    .then((version) => fetch(CHAMPIONS_URL(version)).then((r) => r.json()))
+    .then((data) => {
+      const map = {};
+      for (const champ of Object.values(data.data || {})) {
+        map[champ.name.toLowerCase()] = champ.id;
+      }
+      championIdByName = map;
+      return map;
+    })
+    .catch(() => {
+      // Retried on next call rather than memoizing the failure.
+      championIdMapPromise = null;
+      return null;
+    });
+  return championIdMapPromise;
+}
+
+// Prefetch immediately, same as getLatestVersion/getSkinsMap - by the time
+// a picker actually needs this (well after app boot), it is almost always
+// already resolved.
+ensureChampionIdMap();
+
 export function championSquareUrl(champNameOrId, version = cachedVersion) {
   if (!champNameOrId) return "";
-  const clean = champNameOrId.replace(/[^a-zA-Z0-9]/g, "");
+  // Falls back to the old punctuation-stripped guess if the id map hasn't
+  // resolved yet - correct for most champions anyway, and a wrong URL here
+  // just fails to load the thumbnail (every caller already has an onerror
+  // handler for that), never a crash.
+  const mapped = championIdByName?.[champNameOrId.toLowerCase()];
+  const clean = mapped || champNameOrId.replace(/[^a-zA-Z0-9]/g, "");
   return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${clean}.png`;
 }
 

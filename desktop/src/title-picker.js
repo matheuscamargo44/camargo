@@ -7,7 +7,7 @@ import { openOverlay, closeModal } from "./modal.js";
  * Resolves with `{ title_id }` or `null` if cancelled.
  */
 export function openTitlePicker({ title = "Choose Challenge Title" } = {}) {
-  return new Promise(async (resolve) => {
+  return new Promise((resolve) => {
     let resolved = false;
 
     function finish(result) {
@@ -52,14 +52,7 @@ export function openTitlePicker({ title = "Choose Challenge Title" } = {}) {
     overlay.appendChild(box);
     searchInput.focus();
 
-    // Fetch titles from backend
     let allTitles = [];
-    try {
-      const res = await callAction("challenge_titles", "get_titles", {});
-      allTitles = res.result || [];
-    } catch {
-      allTitles = [];
-    }
 
     function renderList(query = "") {
       listContainer.innerHTML = "";
@@ -83,7 +76,7 @@ export function openTitlePicker({ title = "Choose Challenge Title" } = {}) {
       listContainer.appendChild(clearBtn);
 
       const filtered = allTitles.filter(
-        (t) => t.name.toLowerCase().includes(q) || (t.desc && t.desc.toLowerCase().includes(q))
+        (t) => (t.name || "").toLowerCase().includes(q) || (t.desc && t.desc.toLowerCase().includes(q))
       );
 
       if (filtered.length === 0 && q) {
@@ -112,10 +105,24 @@ export function openTitlePicker({ title = "Choose Challenge Title" } = {}) {
       }
     }
 
-    renderList();
-
-    searchInput.addEventListener("input", () => {
-      renderList(searchInput.value);
-    });
+    // Fetched via a plain promise chain, not `await` inside the executor:
+    // `new Promise(async (resolve) => {...})` swallows any error thrown
+    // after the first await instead of rejecting - a bad response here (or
+    // a title with a missing name reaching renderList, see the guard
+    // above) used to leave this promise unsettled forever, with the
+    // calling button stuck disabled/busy until the user changed routes.
+    callAction("challenge_titles", "get_titles", {})
+      .then((res) => {
+        allTitles = res.result || [];
+      })
+      .catch(() => {
+        allTitles = [];
+      })
+      .finally(() => {
+        renderList();
+        searchInput.addEventListener("input", () => {
+          renderList(searchInput.value);
+        });
+      });
   });
 }

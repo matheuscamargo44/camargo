@@ -100,10 +100,16 @@ function createBackendManager({
     });
   }
 
+  // Resolves true only when the kill is actually confirmed - a caller that
+  // needs to know the process is really gone (stop(), ahead of an update
+  // install that will overwrite the running exe) must not treat "taskkill
+  // exited" as "taskkill succeeded"; those used to be conflated, so a
+  // denied/failed kill (AV lock, permission mismatch, stale pid) was
+  // reported as a clean stop.
   function killTree(pid) {
     return new Promise((resolve) => {
       if (!pid) {
-        resolve();
+        resolve(true);
         return;
       }
       intentionalExits.add(pid);
@@ -112,16 +118,16 @@ function createBackendManager({
           stdio: "ignore",
           windowsHide: true,
         });
-        killer.on("exit", () => resolve());
-        killer.on("error", () => resolve());
+        killer.on("exit", (code) => resolve(code === 0));
+        killer.on("error", () => resolve(false));
         return;
       }
       try {
         process.kill(pid);
       } catch {
-        // already gone
+        // already gone - still a successful outcome
       }
-      resolve();
+      resolve(true);
     });
   }
 
@@ -216,7 +222,12 @@ function createBackendManager({
   async function stop() {
     isStopping = true;
     stopWatchdog();
-    if (proc) await killTree(proc.pid);
+    if (!proc) return true;
+    const killed = await killTree(proc.pid);
+    if (!killed) {
+      log.error(`Failed to confirm backend (pid ${proc.pid}) was stopped`);
+    }
+    return killed;
   }
 
   return { start: spawnProcess, stop, killStale, startWatchdog, stopWatchdog };

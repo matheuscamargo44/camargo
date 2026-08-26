@@ -89,3 +89,47 @@ def test_load_config_does_not_rewrite_an_up_to_date_file(tmp_path, monkeypatch):
         config_module.load_config()
 
     assert config_path.stat().st_mtime_ns == first_write, "reading config must not touch the disk"
+
+
+def test_save_config_retries_a_deepcopy_that_races_a_concurrent_mutation(tmp_path, monkeypatch):
+    """Every feature mutates the shared config dict from its own thread
+    without holding CONFIG_LOCK - a deepcopy here can genuinely race one of
+    those mutations and raise "dictionary changed size during iteration".
+    That must not surface as a crashed save for what is, from the user's
+    perspective, an ordinary toggle click."""
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(config_module, "CONFIG_PATH", config_path)
+
+    calls = {"n": 0}
+    real_deepcopy = config_module.copy.deepcopy
+
+    def flaky_deepcopy(value):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("dictionary changed size during iteration")
+        return real_deepcopy(value)
+
+    monkeypatch.setattr(config_module.copy, "deepcopy", flaky_deepcopy)
+
+    config_module.save_config({"auto_accept": {"enabled": True}})
+
+    assert calls["n"] == 2
+    assert config_path.exists()
+
+
+def test_save_config_gives_up_after_exhausting_retries(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(config_module, "CONFIG_PATH", config_path)
+
+    def always_raises(value):
+        raise RuntimeError("dictionary changed size during iteration")
+
+    monkeypatch.setattr(config_module.copy, "deepcopy", always_raises)
+
+    try:
+        config_module.save_config({"auto_accept": {"enabled": True}})
+        assert False, "expected the persistent race to eventually raise"
+    except RuntimeError:
+        pass
+
+    assert not config_path.exists()

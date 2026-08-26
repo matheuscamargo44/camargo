@@ -265,3 +265,80 @@ describe("watchdog", () => {
     expect(onRespawn).not.toHaveBeenCalled();
   });
 });
+
+describe("stop", () => {
+  it("resolves true once taskkill confirms the process is gone", async () => {
+    const { spawnFn } = createSpawnFn();
+    const manager = createBackendManager({
+      target: { mode: "dev", cwd: "/repo/backend" },
+      authToken: "tok",
+      backendUrl: "http://127.0.0.1:8731",
+      spawnFn,
+      log: silentLog,
+    });
+
+    manager.start();
+    await expect(manager.stop()).resolves.toBe(true);
+  });
+
+  it("resolves false when taskkill exits with a non-zero code", async () => {
+    // The bug this guards: killTree used to resolve on taskkill's "exit"
+    // event regardless of its exit code, so a denied/failed kill (AV lock,
+    // permission mismatch) was reported as a clean stop - a caller relying
+    // on that (an update install about to overwrite the running exe) had
+    // no way to know the old process might still be alive.
+    const state = { calls: [] };
+    const spawnFn = vi.fn((cmd, args) => {
+      state.calls.push([cmd, args]);
+      if (cmd === "taskkill") {
+        const child = fakeChild(undefined);
+        queueMicrotask(() => child.emit("exit", 1, null)); // access denied, etc.
+        return child;
+      }
+      return fakeChild(100);
+    });
+    const manager = createBackendManager({
+      target: { mode: "dev", cwd: "/repo/backend" },
+      authToken: "tok",
+      backendUrl: "http://127.0.0.1:8731",
+      spawnFn,
+      log: silentLog,
+    });
+
+    manager.start();
+    await expect(manager.stop()).resolves.toBe(false);
+  });
+
+  it("resolves false when taskkill itself fails to launch", async () => {
+    const spawnFn = vi.fn((cmd) => {
+      if (cmd === "taskkill") {
+        const child = fakeChild(undefined);
+        queueMicrotask(() => child.emit("error", new Error("spawn failed")));
+        return child;
+      }
+      return fakeChild(100);
+    });
+    const manager = createBackendManager({
+      target: { mode: "dev", cwd: "/repo/backend" },
+      authToken: "tok",
+      backendUrl: "http://127.0.0.1:8731",
+      spawnFn,
+      log: silentLog,
+    });
+
+    manager.start();
+    await expect(manager.stop()).resolves.toBe(false);
+  });
+
+  it("resolves true when there is no process running to stop", async () => {
+    const manager = createBackendManager({
+      target: { mode: "dev", cwd: "/repo/backend" },
+      authToken: "tok",
+      backendUrl: "http://127.0.0.1:8731",
+      spawnFn: vi.fn(),
+      log: silentLog,
+    });
+
+    await expect(manager.stop()).resolves.toBe(true);
+  });
+});

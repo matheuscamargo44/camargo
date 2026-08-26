@@ -74,6 +74,29 @@ def test_http_error_status_degrades_to_empty(monkeypatch):
     assert scrape_aram_augments("UnknownChampion") == {}
 
 
+def test_one_malformed_entry_does_not_discard_the_rest(monkeypatch):
+    """The bug: the numeric conversion for every match happened inside one
+    try/except wrapping the whole loop, so a single malformed token (e.g. a
+    stray extra decimal point the [\\d.]+ performance group can match)
+    raised out of the loop and discarded every entry already parsed - up
+    to 199 good rows lost over one bad one."""
+    chunk = (
+        r'self.__next_f.push([1,"52:[{\"id\":1320,\"tier\":0,\"performance\":81.43},'
+        # A malformed performance value (float() will reject "1.2.3").
+        r'{\"id\":9999,\"tier\":1,\"performance\":1.2.3},'
+        r'{\"id\":2007,\"tier\":5,\"performance\":170.0}]"])'
+    )
+    monkeypatch.setattr(requests, "get", lambda url, timeout, headers: _FakeResponse(chunk))
+
+    data = scrape_aram_augments("Viego")
+
+    assert data == {
+        1320: {"id": 1320, "tier": 0, "performance": 81.43},
+        2007: {"id": 2007, "tier": 5, "performance": 170.0},
+    }
+    assert 9999 not in data
+
+
 def test_a_page_with_no_recognizable_payload_degrades_to_empty(monkeypatch):
     """OP.GG rebuilding their frontend and changing this internal, undocumented
     shape must never raise - just come back with nothing, like every other

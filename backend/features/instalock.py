@@ -230,6 +230,15 @@ class Instalock(ThreadedFeature):
             if champ_id:
                 unavailable_ids.add(champ_id)
 
+        # A champion is unique across both teams in draft modes - without
+        # this, a priority entry the enemy already locked is retried on
+        # every tick, the LCU rejects every PATCH, and the player never
+        # falls through to their next priority entry.
+        for player in session.get("theirTeam", []):
+            champ_id = player.get("championId")
+            if champ_id:
+                unavailable_ids.add(champ_id)
+
         bans = session.get("bans") or {}
         for ban_list in (bans.get("myTeamBans"), bans.get("theirTeamBans")):
             for champ_id in ban_list or []:

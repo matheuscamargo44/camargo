@@ -28,13 +28,20 @@ class FriendRequestsManager(Feature):
 
         return []
 
+    @staticmethod
+    def _incoming(reqs):
+        """Requests actually directed at the local player. Accept/reject
+        must never touch an outgoing request the player sent to someone
+        else - without this filter, "Reject all" on a lobby with 0 incoming
+        but some outgoing requests would silently withdraw the player's own
+        pending invites instead of doing nothing."""
+        return [r for r in reqs if r.get("direction") in ("in", "BOTH", "INCOMING")]
+
     def get_status(self) -> dict:
         pending_count = 0
         if self.lcu.is_league_connected():
             try:
-                reqs = self._fetch_requests()
-                incoming = [r for r in reqs if r.get("direction") in ("in", "BOTH", "INCOMING")]
-                pending_count = len(incoming) if incoming else len(reqs)
+                pending_count = len(self._incoming(self._fetch_requests()))
             except Exception:
                 logger.exception("FriendRequestsManager.get_status failed")
 
@@ -47,7 +54,7 @@ class FriendRequestsManager(Feature):
         if not self.lcu.is_league_connected():
             raise RuntimeError("League client is not connected")
 
-        reqs = self._fetch_requests()
+        reqs = self._incoming(self._fetch_requests())
         accepted = 0
 
         for r in reqs:
@@ -83,7 +90,7 @@ class FriendRequestsManager(Feature):
         if not self.lcu.is_league_connected():
             raise RuntimeError("League client is not connected")
 
-        reqs = self._fetch_requests()
+        reqs = self._incoming(self._fetch_requests())
         rejected = 0
 
         for r in reqs:

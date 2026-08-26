@@ -208,6 +208,81 @@ describe("initAramOverlayController", () => {
     expect(showAramOverlay).toHaveBeenCalledTimes(2);
   });
 
+  it("ignores a poll response that resolves after polling already stopped", async () => {
+    // The bug: an in-flight request has no way to know polling stopped
+    // while it was pending - if it resolved with real badges after the
+    // user disabled the feature (or League dropped), it re-showed the
+    // overlay with no poller left running to ever hide it again.
+    let resolveFirstFetch;
+    const fetchFeatureStatus = vi.fn().mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFirstFetch = resolve;
+      })
+    );
+    const { emitFeatures, showAramOverlay, hideAramOverlay } = await loadControllerWithMocks({
+      fetchFeatureStatus,
+      isLeagueConnected: () => true,
+    });
+
+    emitFeatures({ aram_augment_advisor: { enabled: true } }); // sends the in-flight request
+    emitFeatures({ aram_augment_advisor: { enabled: false } }); // stops polling before it resolves
+    hideAramOverlay.mockClear();
+
+    resolveFirstFetch({
+      recommendation: {
+        active: true,
+        champion: "Ahri",
+        best_slot: null,
+        regions: [{ slot: 0, x: 0.1, y: 0.5, w: 0.08, h: 0.12 }],
+        augments: [{ slot: 0, augment_id: 1, name: "A", icon_url: "u", tier: 4, rank: "A", justification: "", ambiguous: false }],
+      },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(showAramOverlay).not.toHaveBeenCalled();
+    expect(hideAramOverlay).not.toHaveBeenCalled(); // stop already hid it; must not fire again either
+  });
+
+  it("does not paint an older, out-of-order response over a newer one", async () => {
+    // Two overlapping requests can resolve out of order against a backend
+    // doing screen capture + an OP.GG lookup. The older one arriving last
+    // must not overwrite the newer, already-shown badges.
+    let resolveFirstFetch;
+    const older = {
+      active: true,
+      champion: "Ahri",
+      best_slot: null,
+      regions: [{ slot: 0, x: 0.1, y: 0.5, w: 0.08, h: 0.12 }],
+      augments: [{ slot: 0, augment_id: 1, name: "Old", icon_url: "u", tier: 4, rank: "A", justification: "", ambiguous: false }],
+    };
+    const newer = {
+      ...older,
+      augments: [{ slot: 0, augment_id: 99, name: "New", icon_url: "u", tier: 3, rank: "S", justification: "", ambiguous: false }],
+    };
+    const fetchFeatureStatus = vi
+      .fn()
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirstFetch = resolve;
+        })
+      )
+      .mockResolvedValueOnce({ recommendation: newer });
+    const { emitFeatures, showAramOverlay } = await loadControllerWithMocks({
+      fetchFeatureStatus,
+      isLeagueConnected: () => true,
+    });
+
+    emitFeatures({ aram_augment_advisor: { enabled: true } }); // request 1 (older) sent, left pending
+    await vi.advanceTimersByTimeAsync(600); // request 2 (newer) sent and resolves first
+    expect(showAramOverlay).toHaveBeenCalledTimes(1);
+    showAramOverlay.mockClear();
+
+    resolveFirstFetch({ recommendation: older }); // request 1 finally resolves, after request 2 already landed
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(showAramOverlay).not.toHaveBeenCalled();
+  });
+
   it("hides the overlay once the recommendation is no longer active", async () => {
     const fetchFeatureStatus = vi
       .fn()

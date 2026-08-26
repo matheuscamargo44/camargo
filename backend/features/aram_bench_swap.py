@@ -78,16 +78,43 @@ class AramBenchSwap(ThreadedFeature):
         self.on_event("info", f"Aram: removed {champion_name} from the priority list")
         return list(self.champions)
 
-    def resolve_champion(self, bench):
-        """First champion in the priority list that's currently on the
-        shared bench — so if your top pick isn't there yet, the next one in
-        line is swapped to instead.
+    def resolve_champion(self, bench, current_champion_id=None):
+        """First champion in the priority list, *ahead of whatever you
+        already hold*, that's currently on the shared bench — so if your
+        top pick isn't there yet, the next one in line is swapped to
+        instead.
+
+        Without `current_champion_id` this only ever looks at the bench in
+        isolation, which ping-pongs forever between two priority entries
+        that are both on the bench at once: after swapping to entry 1, your
+        previous champion (not necessarily entry 1) lands back on the
+        bench, and a bare bench-only search can match entry 2 there and
+        swap *away* from entry 1 - a downgrade. Stopping the search once it
+        reaches the priority you already hold means nothing later in the
+        list is ever considered "better" than what you already have.
         """
         bench_ids = {b.get("championId") for b in bench}
-        for name in self.champions:
+        current_priority = None
+        if current_champion_id is not None:
+            for index, name in enumerate(self.champions):
+                if self.champ_name_to_id(name) == current_champion_id:
+                    current_priority = index
+                    break
+
+        for index, name in enumerate(self.champions):
+            if current_priority is not None and index >= current_priority:
+                break
             champ_id = self.champ_name_to_id(name)
             if champ_id != -1 and champ_id in bench_ids:
                 return name
+        return None
+
+    @staticmethod
+    def _current_champion_id(session):
+        cell_id = session.get("localPlayerCellId")
+        for player in session.get("myTeam", []):
+            if player.get("cellId") == cell_id:
+                return player.get("championId")
         return None
 
     def _loop(self):
@@ -105,8 +132,9 @@ class AramBenchSwap(ThreadedFeature):
                 if session_res.status_code == 200:
                     session = session_res.json()
                     bench = session.get("benchChampions", [])
+                    current_champion_id = self._current_champion_id(session)
 
-                    champion_name = self.resolve_champion(bench)
+                    champion_name = self.resolve_champion(bench, current_champion_id)
                     if champion_name is not None:
                         champ_id = self.champ_name_to_id(champion_name)
                         swap_res = self.lcu.lcu_request(

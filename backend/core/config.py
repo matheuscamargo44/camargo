@@ -144,11 +144,29 @@ def load_config():
         return config
 
 
+#: Every feature mutates the shared config dict directly from its own
+#: thread (setdefault, a plain `config["x"] = ...`) without acquiring
+#: CONFIG_LOCK itself - threading the lock through every one of those call
+#: sites across every feature would be a much larger change than this fix.
+#: deepcopy() below can therefore legitimately race a concurrent in-place
+#: mutation and raise "dictionary changed size during iteration" (or, for a
+#: mutated list, the far quieter failure of copying a torn snapshot without
+#: raising at all). The retry only guards the loud failure: a deepcopy that
+#: raises is retried against whatever the dict looks like a moment later,
+#: rather than surfacing as a crashed request for what is, from the user's
+#: perspective, an ordinary toggle click.
+_SAVE_RETRY_ATTEMPTS = 3
+
+
 def save_config(config):
     with CONFIG_LOCK:
-        # Every feature thread mutates this same dict; serialize a snapshot so
-        # a concurrent toggle cannot change it mid-dump.
-        snapshot = json.dumps(copy.deepcopy(config), indent=4) + "\n"
+        for attempt in range(_SAVE_RETRY_ATTEMPTS):
+            try:
+                snapshot = json.dumps(copy.deepcopy(config), indent=4) + "\n"
+                break
+            except RuntimeError:
+                if attempt == _SAVE_RETRY_ATTEMPTS - 1:
+                    raise
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = CONFIG_PATH.with_suffix(f"{CONFIG_PATH.suffix}.tmp")
         temporary_path.write_text(snapshot, encoding="utf-8")

@@ -11,6 +11,15 @@ const FAST_POLL_INTERVAL_MS = 600;
 
 let fastPollTimer = null;
 let lastRegionKey = null;
+// Bumped by stopFastPolling - lets an in-flight pollOnce that resolves
+// *after* polling stopped recognize it's stale and do nothing.
+let pollGeneration = 0;
+// Overlapping 600ms polls are routine against a backend doing screen
+// capture + an OP.GG lookup - lets a response recognize a *newer* request
+// has already been sent (or already resolved) since it went out, so an
+// out-of-order-arriving older response can't paint stale badges over a
+// newer game's.
+let latestSequence = 0;
 
 function buildBadges(recommendation) {
   const regions = recommendation.regions || [];
@@ -39,12 +48,22 @@ function buildBadges(recommendation) {
 }
 
 async function pollOnce() {
+  const generation = pollGeneration;
+  const sequence = ++latestSequence;
+
   let status;
   try {
     status = await fetchFeatureStatus(FEATURE_KEY);
   } catch {
     return; // a stalled backend request just skips this tick, not a fatal error
   }
+
+  // This request may have been sent, then outlived by polling stopping
+  // entirely (stale, would re-show an overlay nothing is left to hide
+  // again) or by a newer request that has already been sent or already
+  // resolved (out of order, would paint an older game's badges over a
+  // newer one). Either way, this result no longer reflects "now".
+  if (generation !== pollGeneration || sequence !== latestSequence) return;
 
   const recommendation = status.recommendation;
   if (!recommendation || !recommendation.active) {
@@ -77,6 +96,7 @@ function stopFastPolling() {
   if (fastPollTimer === null) return;
   clearInterval(fastPollTimer);
   fastPollTimer = null;
+  pollGeneration += 1;
   lastRegionKey = null;
   window.camargo.hideAramOverlay();
 }

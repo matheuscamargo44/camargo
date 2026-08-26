@@ -50,9 +50,17 @@ class AutoHonor(ThreadedFeature):
                     if m_summoner_id and m_summoner_id != local_summoner_id:
                         summoner_ids.add(m_summoner_id)
 
-                if puuids or summoner_ids:
-                    self.party_member_puuids = puuids
-                    self.party_member_summoner_ids = summoner_ids
+                # Always sync to exactly what this lobby has now - including
+                # empty, when the lobby is solo. Only updating on a non-empty
+                # result meant a duo's party ids survived into a later solo
+                # lobby forever, so a random future teammate who happened to
+                # share one of those stale ids would be auto-honored as if
+                # they were still the duo partner. A non-200 (e.g. the lobby
+                # endpoint not existing mid-game) still intentionally leaves
+                # the last-known lobby's members in place, since that is the
+                # data the post-game ballot needs - see pick_honor_target.
+                self.party_member_puuids = puuids
+                self.party_member_summoner_ids = summoner_ids
         except Exception:
             logger.exception("AutoHonor._update_party_members failed")
 

@@ -97,7 +97,7 @@ def augment_rank(tier, performance, best_tier_best):
 
 
 _RANK_JUSTIFICATIONS = {
-    "OP": "The best tier-3 augment for {champion}.",
+    "OP": "The best augment for {champion}.",
     "S": "A top-tier augment for {champion}.",
     "A": "A solid augment for {champion}.",
     "B": "Below the stronger options for {champion}.",
@@ -184,6 +184,18 @@ PICKER_POLL_SECONDS = 0.5
 #: dropping the recommendation on one bad frame - the badge may linger up
 #: to this long after a real close, which is a much smaller cost than
 #: flickering while the player is still deciding.
+#:
+#: Known gap, deliberately not fixed here (2026-08-26 audit): a reroll
+#: closes and reopens the picker with 3 different augments, and if that
+#: happens faster than CLOSE_DEBOUNCE_TICKS * PICKER_POLL_SECONDS,
+#: _picker_was_open never drops to False, so the new offer is never
+#: re-captured and the stale pre-reroll badges keep showing. Fixing that
+#: by re-capturing on any partial closed-streak was tried and reverted: it
+#: reintroduces exactly the hover-flicker re-trigger this constant exists
+#: to prevent (see test_a_new_open_edge_is_not_re_captured_while_already_open),
+#: since a flicker and a reroll look identical from picker_is_open() alone.
+#: A real fix needs to compare newly-identified augment ids against the
+#: current recommendation's, not just picker presence.
 CLOSE_DEBOUNCE_TICKS = 3
 
 
@@ -300,7 +312,12 @@ class AramAugmentAdvisor(ThreadedFeature):
         return candidates[0], None, len(distinct_names) > 1
 
     def _tier_data_for_champion(self, champion_id, champion_alias):
-        if self._champion_id_this_game == champion_id and self._champion_augment_data is not None:
+        # Only an actually-populated result is trusted as cached - caching
+        # `{}` from a transient failure (network blip, OP.GG down for a
+        # moment) would otherwise mean one bad lookup on the first pick
+        # disables augment data for every later pick (11, 15) the rest of
+        # the game, long after the network recovered.
+        if self._champion_id_this_game == champion_id and self._champion_augment_data:
             return self._champion_augment_data
 
         # Scraping OP.GG's own site first: it covers all 6 tiers (0-5),
@@ -343,7 +360,11 @@ class AramAugmentAdvisor(ThreadedFeature):
             augment_id, tier, ambiguous = self._resolve_candidates(entry["candidates"], tier_data)
             performance = tier_data.get(augment_id, {}).get("performance") if tier is not None else None
             rank = None if ambiguous else augment_rank(tier, performance, best_tier_best)
-            rarity_label = RARITY_LABELS.get(augment_catalog.rarity(augment_id))
+            # Same reasoning as `name` above: an ambiguous card's identity
+            # (candidates[0], picked arbitrarily) is not known, so a
+            # specific rarity read off of it would be asserting a property
+            # of an augment the code just declared it can't identify.
+            rarity_label = None if ambiguous else RARITY_LABELS.get(augment_catalog.rarity(augment_id))
             justification = (
                 "Several augments share this exact icon, so which one this is can't be told for sure."
                 if ambiguous
@@ -370,7 +391,13 @@ class AramAugmentAdvisor(ThreadedFeature):
             # field already used in this codebase; performance only breaks
             # a tie within the same tier (e.g. OP vs a plain S offered
             # together), never crosses tiers - see augment_rank().
-            if tier is not None:
+            #
+            # Requiring `rank is not None` (not just `tier is not None`)
+            # matters: a tier value TIER_RANKS doesn't map (an unexpected
+            # scraper/MCP value) would otherwise still be eligible to win
+            # "best" while its own justification text says there's no data
+            # for it - contradicting the card in front of the player.
+            if tier is not None and rank is not None:
                 key = (tier, -(performance or 0))
                 if best_key is None or key < best_key:
                     best_slot, best_key = entry["slot"], key
@@ -384,16 +411,23 @@ class AramAugmentAdvisor(ThreadedFeature):
         }
 
     def _on_picker_opened(self, champion_name):
+        best_partial = None
         for _attempt in range(CAPTURE_ATTEMPTS):
             if self._sleep(CAPTURE_SETTLE_SECONDS):
                 return
             # The player may have picked (or this may be a transient bad
             # read - see CARD_BORDER_REQUIRED_COUNT) since the last check.
+            # Treated as a failed attempt rather than an immediate bail: a
+            # single False reading here used to end the whole pick with no
+            # recommendation and no further retry, even though the picker
+            # was still genuinely open and CAPTURE_ATTEMPTS budget remained.
             if not picker_is_open():
-                return
+                continue
 
             recommendation = self._build_recommendation(champion_name)
-            if recommendation is not None:
+            if recommendation is None:
+                continue
+            if len(recommendation.get("augments") or []) == len(AUGMENT_CARD_REGIONS):
                 self._recommendation = recommendation
                 if recommendation["best_slot"] is not None:
                     self.on_event(
@@ -401,8 +435,23 @@ class AramAugmentAdvisor(ThreadedFeature):
                         f"Aram Augments: recommending slot {recommendation['best_slot'] + 1} for {champion_name}",
                     )
                 return
-        # Every attempt identified nothing - leave _recommendation at None
-        # (its default) rather than show badges for a guess.
+            # A partial read (a card still fading in) used to be accepted
+            # immediately, on the first attempt - potentially confidently
+            # recommending the second-best of only 2 seen cards while a
+            # third, unread card was actually the best. Worth trying again
+            # for a complete read, but kept as a fallback in case every
+            # remaining attempt does no better.
+            best_partial = recommendation
+
+        if best_partial is not None:
+            self._recommendation = best_partial
+            if best_partial["best_slot"] is not None:
+                self.on_event(
+                    "info",
+                    f"Aram Augments: recommending slot {best_partial['best_slot'] + 1} for {champion_name}",
+                )
+        # Every attempt identified nothing at all - leave _recommendation at
+        # None (its default) rather than show badges for a guess.
 
     def _loop(self):
         while not self._stop_event.is_set():
@@ -431,8 +480,7 @@ class AramAugmentAdvisor(ThreadedFeature):
             except Exception:
                 phase = None
 
-            if phase != "InProgress":
-                self._reset_game_state()
+            if not self._handle_gameflow_phase(phase):
                 if self._sleep(2):
                     return
                 continue
@@ -453,6 +501,22 @@ class AramAugmentAdvisor(ThreadedFeature):
 
             if self._sleep(PICKER_POLL_SECONDS):
                 return
+
+    def _handle_gameflow_phase(self, phase):
+        """True if the rest of this tick's loop body should still run.
+
+        A confirmed different phase (Lobby, ChampSelect, ...) really does
+        mean the game ended, so it resets state. `phase is None` only means
+        the LCU request itself failed (a transient hiccup) - not
+        confirmation of anything - so it must not wipe a live
+        recommendation the player is actively looking at mid-pick, which a
+        bare `phase != "InProgress"` reset used to do on this path.
+        """
+        if phase != "InProgress":
+            if phase is not None:
+                self._reset_game_state()
+            return False
+        return True
 
     def _handle_picker_state(self, is_open, champion_name):
         """The open/closed edge handling, pulled out of `_loop()` so it's
