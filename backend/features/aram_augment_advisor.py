@@ -51,11 +51,30 @@ def tier_rank(tier):
 
 #: The gold border is drawn before the icons finish fading in, so give the
 #: picker a moment to settle, then confirm it's still open before capturing.
+#: Also doubles as the spacing between retry attempts (see
+#: CAPTURE_ATTEMPTS): a capture that lands on a half-drawn frame is worth
+#: trying again a moment later, not giving up on for the rest of the pick.
 CAPTURE_SETTLE_SECONDS = 0.4
+
+#: A capture landing during a transition (fade-in, or the frame right after
+#: a reroll) can legitimately identify nothing even with the picker
+#: genuinely open. Retried rather than given up on after one miss.
+CAPTURE_ATTEMPTS = 3
 
 #: How often to probe for the picker while in a Mayhem game. The probe reads
 #: 27 pixels, so this is cheap; the pick window is only a few seconds.
 PICKER_POLL_SECONDS = 0.5
+
+#: Hovering a card to compare it enlarges it (see
+#: core.aram_augment_regions.CARD_BORDER_REQUIRED_COUNT for the matching
+#: fix on the read side), and every so often the single-frame read still
+#: comes back closed even with the 2-of-3 tolerance. Confirmed live: a real
+#: session's log showed one pick moment re-triggering 4 times in 6s. This
+#: requires the closed reading to repeat before believing it, rather than
+#: dropping the recommendation on one bad frame - the badge may linger up
+#: to this long after a real close, which is a much smaller cost than
+#: flickering while the player is still deciding.
+CLOSE_DEBOUNCE_TICKS = 3
 
 
 class AramAugmentAdvisor(ThreadedFeature):
@@ -88,6 +107,7 @@ class AramAugmentAdvisor(ThreadedFeature):
 
     def _reset_game_state(self):
         self._picker_was_open = False
+        self._closed_streak = 0
         self._recommendation = None
         self._champion_augment_data = None
         self._champion_id_this_game = None
@@ -207,18 +227,25 @@ class AramAugmentAdvisor(ThreadedFeature):
         }
 
     def _on_picker_opened(self, champion_name):
-        if self._sleep(CAPTURE_SETTLE_SECONDS):
-            return
-        # The player may have picked during the settle delay.
-        if not picker_is_open():
-            return
+        for _attempt in range(CAPTURE_ATTEMPTS):
+            if self._sleep(CAPTURE_SETTLE_SECONDS):
+                return
+            # The player may have picked (or this may be a transient bad
+            # read - see CARD_BORDER_REQUIRED_COUNT) since the last check.
+            if not picker_is_open():
+                return
 
-        self._recommendation = self._build_recommendation(champion_name)
-        if self._recommendation and self._recommendation["best_slot"] is not None:
-            self.on_event(
-                "info",
-                f"Aram Augments: recommending slot {self._recommendation['best_slot'] + 1} for {champion_name}",
-            )
+            recommendation = self._build_recommendation(champion_name)
+            if recommendation is not None:
+                self._recommendation = recommendation
+                if recommendation["best_slot"] is not None:
+                    self.on_event(
+                        "info",
+                        f"Aram Augments: recommending slot {recommendation['best_slot'] + 1} for {champion_name}",
+                    )
+                return
+        # Every attempt identified nothing - leave _recommendation at None
+        # (its default) rather than show badges for a guess.
 
     def _loop(self):
         while not self._stop_event.is_set():
@@ -265,14 +292,24 @@ class AramAugmentAdvisor(ThreadedFeature):
                     return
                 continue
 
-            is_open = picker_is_open()
-            if is_open and not self._picker_was_open:
-                self._on_picker_opened(player.get("championName"))
-            elif not is_open and self._picker_was_open:
-                # Picker closed (picked, rerolled, or timed out): the badges
-                # must come down with it.
-                self._recommendation = None
-            self._picker_was_open = is_open
+            self._handle_picker_state(picker_is_open(), player.get("championName"))
 
             if self._sleep(PICKER_POLL_SECONDS):
                 return
+
+    def _handle_picker_state(self, is_open, champion_name):
+        """The open/closed edge handling, pulled out of `_loop()` so it's
+        directly testable without monkeypatching module globals to fake a
+        poll tick."""
+        if is_open:
+            self._closed_streak = 0
+            if not self._picker_was_open:
+                self._on_picker_opened(champion_name)
+                self._picker_was_open = True
+        elif self._picker_was_open:
+            self._closed_streak += 1
+            if self._closed_streak >= CLOSE_DEBOUNCE_TICKS:
+                # Picker closed (picked, rerolled, or timed out): the
+                # badges come down with it.
+                self._recommendation = None
+                self._picker_was_open = False

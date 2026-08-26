@@ -283,3 +283,33 @@ shows nothing rather than something wrong).
 **Watch out when debugging from source**: `identify()` returning nothing in a dev script usually means
 the dev `backend/augment_cache/` was deleted and the catalog has not been rebuilt - the installed app
 keeps its own cache under `%APPDATA%/camargo/`. That cost a wrong diagnosis once.
+
+### Flapping fix (2026-08-25) — hovering a card to compare it briefly reads as "picker closed"
+
+A real user session's log showed one continuous pick moment re-triggering `_on_picker_opened` **4 times
+in 6 seconds**, all identifying the same card - only possible if `picker_is_open()` was flickering while
+the picker never actually closed. User-visible symptom: the recommendation badges flashed on and off, and
+occasionally a pick window ended with no recommendation shown at all.
+
+Root cause: comparing augment cards means hovering each one in turn, and League's own UI **enlarges the
+hovered card**. That shifts its border away from the fixed pixel column `picker_is_open()` samples,
+dropping that one card below `CARD_BORDER_MIN_HITS` - and the original check required all 3 columns to
+pass. The exact act of deciding which card to pick was what made the picker read as closed.
+
+Two independent fixes, not one, because they cover different failure windows:
+
+1. **Read side** (`CARD_BORDER_REQUIRED_COUNT = 2` in `aram_augment_regions.py`): `picker_is_open()` now
+   passes on 2-of-3 borders instead of 3-of-3, so hovering one card no longer fails the whole check. A
+   genuinely closed picker still reads 0-of-3, so the two states stay cleanly separated - reverified
+   against every real screenshot on hand (both calibration shots and live diagnostic captures) after the
+   change, all still classified correctly.
+2. **Debounce** (`CLOSE_DEBOUNCE_TICKS = 3` in `aram_augment_advisor.py`): a second, independent safety
+   net - the open→closed edge now requires 3 consecutive closed readings (≈1.5s) before clearing the
+   recommendation, so any remaining single-frame noise (not just the hover case) can't wipe the badge
+   mid-decision. The open edge stays immediate; only closing is debounced, since a late badge appearing is
+   free but a badge vanishing while the player is looking at it is the whole complaint.
+
+Also added a capture retry (`CAPTURE_ATTEMPTS = 3` in `_on_picker_opened`): a capture landing on a
+half-drawn frame can legitimately identify nothing even with the picker genuinely open, so it's retried a
+couple of times (same `CAPTURE_SETTLE_SECONDS` spacing) before giving up on that pick window, instead of
+one miss meaning no recommendation for the whole card screen.

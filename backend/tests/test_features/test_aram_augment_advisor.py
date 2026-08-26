@@ -235,23 +235,58 @@ def test_tier_data_is_fetched_once_per_champion(monkeypatch):
 # -- picker open/close drives the badge lifecycle --
 
 
-def test_a_closed_picker_clears_the_recommendation(monkeypatch):
-    """The badges must come down the moment the picker does - the player
-    has picked, rerolled, or the window timed out."""
-    import features.aram_augment_advisor as module
-
-    monkeypatch.setattr(module, "picker_is_open", lambda: False)
-
+def test_a_sustained_closed_reading_clears_the_recommendation():
+    """The badges must come down once the picker genuinely closes - the
+    player has picked, rerolled, or the window timed out."""
     feature = make_feature()
     feature._recommendation = {"active": True}
     feature._picker_was_open = True
 
-    # Mirror the loop's edge handling.
-    is_open = module.picker_is_open()
-    if not is_open and feature._picker_was_open:
-        feature._recommendation = None
+    from features.aram_augment_advisor import CLOSE_DEBOUNCE_TICKS
+
+    for _ in range(CLOSE_DEBOUNCE_TICKS):
+        feature._handle_picker_state(False, "Ahri")
 
     assert feature.get_status()["recommendation"] is None
+    assert feature._picker_was_open is False
+
+
+def test_a_single_bad_frame_does_not_clear_the_recommendation():
+    """Hovering a card to compare it enlarges it, which can make a single
+    frame read as 'closed' even though the picker is still up (confirmed
+    live: a real session re-triggered a capture 4 times in 6s for what was
+    one continuous pick). One bad reading must not wipe the badges the
+    player is actively looking at.
+    """
+    feature = make_feature()
+    feature._recommendation = {"active": True}
+    feature._picker_was_open = True
+
+    feature._handle_picker_state(False, "Ahri")  # one bad frame
+    assert feature.get_status()["recommendation"] == {"active": True}
+
+    feature._handle_picker_state(True, "Ahri")  # picker still open really
+
+    assert feature.get_status()["recommendation"] == {"active": True}
+    assert feature._closed_streak == 0
+
+
+def test_a_new_open_edge_is_not_re_captured_while_already_open(monkeypatch):
+    """A momentary bad frame must not make the picker look like it closed
+    and reopened - that would recapture (and, before this, log a second
+    'recommending' event) for what the player experiences as one
+    continuous pick."""
+    import features.aram_augment_advisor as module
+
+    calls = []
+    monkeypatch.setattr(module.AramAugmentAdvisor, "_on_picker_opened", lambda self, name: calls.append(name))
+
+    feature = make_feature()
+    feature._handle_picker_state(True, "Ahri")
+    feature._handle_picker_state(False, "Ahri")  # one bad frame, below the debounce threshold
+    feature._handle_picker_state(True, "Ahri")
+
+    assert calls == ["Ahri"]
 
 
 def test_capture_is_abandoned_if_the_picker_closes_during_settle(monkeypatch):
@@ -277,13 +312,53 @@ def test_game_state_reset_clears_everything():
     feature = make_feature()
     feature._recommendation = {"active": True}
     feature._picker_was_open = True
+    feature._closed_streak = 2
     feature._champion_augment_data = {1: {"tier": 3}}
 
     feature._reset_game_state()
 
     assert feature._recommendation is None
     assert feature._picker_was_open is False
+    assert feature._closed_streak == 0
     assert feature._champion_augment_data is None
+
+
+# -- _on_picker_opened: retrying a bad capture --
+
+
+def test_a_failed_capture_is_retried_before_giving_up(monkeypatch):
+    """A capture that lands on a half-drawn frame (fade-in, or right after
+    a reroll) can legitimately identify nothing even with the picker
+    genuinely open - worth trying again, not giving up on the whole pick.
+    """
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "picker_is_open", lambda: True)
+    attempts = {"n": 0}
+
+    def fake_build_recommendation(self, champion_name):
+        attempts["n"] += 1
+        return None if attempts["n"] < 3 else {"active": True, "best_slot": None}
+
+    monkeypatch.setattr(module.AramAugmentAdvisor, "_build_recommendation", fake_build_recommendation)
+
+    feature = make_feature()
+    feature._on_picker_opened("Ahri")
+
+    assert attempts["n"] == 3
+    assert feature._recommendation == {"active": True, "best_slot": None}
+
+
+def test_gives_up_after_exhausting_capture_attempts(monkeypatch):
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "picker_is_open", lambda: True)
+    monkeypatch.setattr(module.AramAugmentAdvisor, "_build_recommendation", lambda self, name: None)
+
+    feature = make_feature()
+    feature._on_picker_opened("Ahri")
+
+    assert feature._recommendation is None
 
 
 def test_get_status_shape_when_idle():

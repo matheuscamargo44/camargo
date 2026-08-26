@@ -12,7 +12,12 @@ import logging
 import mss
 from PIL import Image
 
-from core.aram_augment_regions import CARD_BORDER_MIN_HITS, CARD_BORDER_XS, CARD_BORDER_Y_RANGE
+from core.aram_augment_regions import (
+    CARD_BORDER_MIN_HITS,
+    CARD_BORDER_REQUIRED_COUNT,
+    CARD_BORDER_XS,
+    CARD_BORDER_Y_RANGE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,15 +62,16 @@ def picker_is_open(image=None):
         x_offset = y_offset = 0
 
     pixels = image.convert("RGB").load()
+    passing = 0
     for border_x in CARD_BORDER_XS:
         hits = sum(
             1
             for border_y in CARD_BORDER_Y_RANGE
             if _is_card_border_gold(pixels[border_x - x_offset, border_y - y_offset])
         )
-        if hits < CARD_BORDER_MIN_HITS:
-            return False
-    return True
+        if hits >= CARD_BORDER_MIN_HITS:
+            passing += 1
+    return passing >= CARD_BORDER_REQUIRED_COUNT
 
 
 def capture_absolute(left, top, width, height):

@@ -27,6 +27,18 @@ CARD_BORDER_Y_RANGE = range(370, 460, 10)
 #: noise floor (2) and below the observed open-picker score (9).
 CARD_BORDER_MIN_HITS = 7
 
+#: Hovering a card during this exact picker enlarges it - confirmed live:
+#: a real session's log showed one pick moment re-triggering 4 times in 6s,
+#: all for the same card, which only happens if detection is flapping while
+#: the picker never actually closed. The enlarge animation shifts that
+#: card's border away from its fixed sample column, dropping it below
+#: CARD_BORDER_MIN_HITS - but only ever one card at a time, since only one
+#: is hovered. Requiring all 3 columns to pass (the original design) means
+#: the exact act of deciding which card to pick - hovering each one in
+#: turn - was what made the picker read as "closed". 2 of 3 tolerates that
+#: while still telling a genuinely closed picker (0 borders) apart.
+CARD_BORDER_REQUIRED_COUNT = 2
+
 #: Tight to the icon glyph only - not the card's name, description or tier
 #: badge - because AugmentCatalog matches this crop against reference icons
 #: that are themselves just the glyph.
