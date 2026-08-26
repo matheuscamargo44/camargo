@@ -4,7 +4,10 @@ No Riot-sanctioned API exposes which augments are offered during the pick
 screen (confirmed exhaustively - see `docs/smart-counter-pick-spec.md`,
 Part B), so this identifies them the same way Blitz and the OP.GG desktop
 app do: screen-capture the 3 card icons and match them against a reference
-icon set (`core.augment_catalog`), then look up tier data from OP.GG's MCP.
+icon set (`core.augment_catalog`), then look up tier/performance data by
+reading OP.GG's own ARAM: Mayhem page for the champion (`core.opgg_scraper`),
+falling back to OP.GG's official but narrower MCP tool (`core.opgg_client`)
+if that scrape fails.
 
 The picker's presence is *detected* on screen (see
 `core.augment_vision.picker_is_open`) rather than inferred from the
@@ -29,48 +32,66 @@ from core.config import save_config
 from core.augment_vision import capture_region, picker_is_open, primary_monitor_resolution
 from core.live_client_data import get_all_game_data, local_player
 from core.opgg_client import opgg_client
+from core.opgg_scraper import scrape_aram_augments
 from features.base import ThreadedFeature
 
 logger = logging.getLogger(__name__)
 
 ARAM_MAYHEM_GAME_MODE = "KIWI"
 
-#: OP.GG rates ARAM augments on a numeric tier where **lower is better** -
-#: verified against performance scores per champion (Viego: T3 averages
-#: 79.5, T4 78.5, T5 76.6) and against the shape of the distribution, where
-#: T3 is rare and T5 is the bulk. Only 3/4/5 are ever returned, checked
-#: across five champions, so the three of them are the whole scale.
-TIER_RANKS = {3: "S", 4: "A", 5: "B"}
+#: OP.GG rates ARAM augments on a numeric tier where **lower is better**,
+#: across six tiers (0-5), not three. Confirmed live by diffing a full page
+#: scrape against the MCP tool's own output for Viego: every entry the MCP
+#: returns matches the scrape exactly (id 1103 "Bread And Butter": tier 3,
+#: performance 72.1 in both) - but the MCP only ever hands back tiers 3-5,
+#: silently omitting 0-2, the champion's three *best* bands (65 of Viego's
+#: 200 augments). `core.opgg_scraper` reads the site directly to recover
+#: those; the MCP is only a fallback if that scrape fails. Two raw tiers
+#: are grouped per letter (their performance averages sit close enough in
+#: pairs - Viego: T0 82.5/T1 82.7, T2 78.2/T3 79.5, T4 78.5/T5 76.6 - to
+#: read as one band each) so the on-screen rank vocabulary (OP/S/A/B)
+#: doesn't have to grow just because the data got deeper.
+TIER_RANKS = {0: "S", 1: "S", 2: "A", 3: "A", 4: "B", 5: "B"}
 
-#: Within tier 3 there is real spread - checked live, Viego's tier-3
-#: performance runs 72.1 to 88.0, Garen's 63.2 to 81.8 - so the very best
-#: of it earns its own rank rather than being lumped in with the rest of S.
-#: A candidate within this many performance points of the champion's best
-#: tier-3 score counts as tied for OP.
+#: The best of the six tiers - carved into its own OP rank below.
+BEST_TIER = 0
+
+#: Within the best tier there is real spread - checked live, Viego's tier-0
+#: performance runs 76.5 to 88.7 - so the very best of it earns its own
+#: rank rather than being lumped in with the rest of S. A candidate within
+#: this many performance points of the champion's best tier-0 score counts
+#: as tied for OP.
 OP_PERFORMANCE_MARGIN = 1.0
 
 
-def _tier3_best_performance(tier_data):
+def _best_tier_performance(tier_data):
     scores = [
         entry.get("performance")
         for entry in tier_data.values()
-        if entry.get("tier") == 3 and entry.get("performance") is not None
+        if entry.get("tier") == BEST_TIER and entry.get("performance") is not None
     ]
     return max(scores) if scores else None
 
 
-def augment_rank(tier, performance, tier3_best):
+def augment_rank(tier, performance, best_tier_best):
     """Letter rank for display. `performance` only ever breaks a tie
-    *within* tier 3, to carve OP out of S - never compared across tiers.
+    *within* the best tier, to carve OP out of S - never compared across
+    tiers.
 
     Checked live: tier 5 (the worst bucket) includes augments scoring well
-    above tier 3's real range (up to 170, against tier 3's max of ~88) -
-    a low-sample-size artifact, not genuine strength. OP.GG's own tier
-    already accounts for that (verified: mean performance drops cleanly
-    from tier 3 to 5), so it stays the primary signal and performance is
-    only trusted to compare augments the tier already agrees are the best.
+    above the best tier's real range (up to 170, against tier 0's max of
+    ~89) - a low-sample-size artifact, not genuine strength. OP.GG's own
+    tier already accounts for that (verified: mean performance is flat to
+    slightly declining from tier 0 to 5, with tier 5 just far noisier), so
+    it stays the primary signal and performance is only trusted to compare
+    augments the tier already agrees are the best.
     """
-    if tier == 3 and performance is not None and tier3_best is not None and tier3_best - performance <= OP_PERFORMANCE_MARGIN:
+    if (
+        tier == BEST_TIER
+        and performance is not None
+        and best_tier_best is not None
+        and best_tier_best - performance <= OP_PERFORMANCE_MARGIN
+    ):
         return "OP"
     return TIER_RANKS.get(tier)
 
@@ -105,29 +126,30 @@ def augment_justification(champion_name, rank, performance, rarity_label=None):
     known: the tier grade and the real performance score. No invented
     flavor text about synergy or mechanics we have no data for.
 
-    The score is only ever appended for OP/S (tier 3): that is the one
-    tier where performance is trusted at all (see augment_rank), so it is
-    the only place where the number means what it looks like it means.
-    Showing it next to an A/B card would be actively misleading - checked
-    live, a tier-5 "B" augment can score 170, well above a tier-3 "OP" at
-    88, since performance is not comparable across tiers.
+    The score is only ever appended for OP/S (tier 0-1): that is the band
+    where performance is trusted at all (see augment_rank), so it is the
+    only place where the number means what it looks like it means. Showing
+    it next to an A/B card would be actively misleading - checked live, a
+    tier-5 "B" augment can score 170, well above a tier-0 "OP" at ~89,
+    since performance is not comparable across tiers.
 
     An unrated augment (`rank is None`) is *not* the same claim as "this is
-    weak" - checked live, only ~22% of a champion's full augment pool ever
-    gets a tier at all (135 of ~600 for Viego), almost certainly because
-    OP.GG needs a minimum sample size before it will rate one. With that
-    little coverage, most 3-card offers will have at least one unrated
-    card by pure chance, so this needs to read as "no data", not a verdict.
+    weak" - it means neither `core.opgg_scraper` (the full-pool source read
+    from OP.GG's own site) nor the MCP fallback returned this augment id at
+    all for this champion, which happens for genuinely obscure pairings
+    OP.GG has too few match samples for. This is now rare rather than the
+    common case it was before the scraper existed: the MCP tool alone
+    covered only tiers 3-5 (135 of Viego's 200 augments, and none of his
+    three *best* bands), so most 3-card offers used to show at least one
+    "no data" card purely from that gap. The scraper closes it - see
+    `core.opgg_scraper` for how, and for the live diff that proved the MCP
+    was silently dropping tiers 0-2 rather than the pool genuinely lacking
+    data for them.
 
     `rarity_label` (Silver/Gold/Prismatic/...) is the one thing still known
-    about an unrated augment: it's static game data, not a statistic, so
-    it's never missing the way a tier can be. Researched deliberately after
-    it came up that no data source - OP.GG's own site included - publishes
-    fuller per-champion coverage than this MCP tool already gives us; the
-    sparsity looks like a genuine cold-start data problem (real match
-    samples for a specific champion+augment pairing), not a gap this app
-    is failing to fill from a better source. Naming the rarity at least
-    keeps a "no data" card from reading as completely blank.
+    about a genuinely unrated augment: it's static game data, not a
+    statistic, so it's never missing the way a tier can be. Naming it at
+    least keeps a "no data" card from reading as completely blank.
     """
     if rank is None:
         pick = f"this {rarity_label} pick" if rarity_label else "this pick"
@@ -173,6 +195,7 @@ class AramAugmentAdvisor(ThreadedFeature):
     def __init__(self, lcu_client, config, on_event=None):
         super().__init__(lcu_client, config, on_event)
         self._champ_name_to_id = {}
+        self._champ_name_to_alias = {}
         self._reset_game_state()
         self._unsupported_resolution = False
         self._warned_unsupported_resolution = False
@@ -212,12 +235,24 @@ class AramAugmentAdvisor(ThreadedFeature):
             for champ in response.json():
                 if champ["id"] > 0:
                     self._champ_name_to_id[champ["name"]] = champ["id"]
+                    # OP.GG's own site URL slug is exactly this alias
+                    # lowercased (verified live against the whole roster:
+                    # MonkeyKing -> monkeyking, DrMundo -> drmundo,
+                    # KaiSa -> kaisa, RekSai -> reksai) - see
+                    # core.opgg_scraper.
+                    alias = champ.get("alias")
+                    if alias:
+                        self._champ_name_to_alias[champ["name"]] = alias.lower()
         except Exception:
             logger.exception("AramAugmentAdvisor: failed to load champion list")
 
     def _champion_id_for(self, champion_name):
         self._ensure_champion_list()
         return self._champ_name_to_id.get(champion_name)
+
+    def _champion_alias_for(self, champion_name):
+        self._ensure_champion_list()
+        return self._champ_name_to_alias.get(champion_name)
 
     # -- identification + tier lookup --
 
@@ -238,12 +273,12 @@ class AramAugmentAdvisor(ThreadedFeature):
 
         A few genuinely different augments ship identical art, so the
         matcher can only narrow a card down to a set. OP.GG's per-champion
-        data covers tier 3 and above, which resolves most of it: usually
-        only one candidate is rated at all. When several are rated and they
-        disagree, there is no honest way to pick, so the tier is dropped
-        rather than guessed - the slot still shows, it just cannot win
-        "best". Measured against a real champion pool, that last case hit
-        4 of 118 icon groups.
+        data (via `core.opgg_scraper`, covering its full 0-5 tier range)
+        resolves most of it: usually only one candidate has data at all.
+        When several do and they disagree, there is no honest way to pick,
+        so the tier is dropped rather than guessed - the slot still shows,
+        it just cannot win "best". Measured against a real champion pool,
+        that last case hit 4 of 118 icon groups.
         """
         rated = [augment_id for augment_id in candidates if augment_id in tier_data]
         tiers = {tier_data[augment_id]["tier"] for augment_id in rated}
@@ -256,23 +291,38 @@ class AramAugmentAdvisor(ThreadedFeature):
         if len(tiers) > 1:
             return rated[0], None, True
 
-        # Nothing rated. Checked live: only ~22% of a champion's augment
-        # pool ever gets a tier at all, almost certainly a minimum-sample-
-        # size cutoff on OP.GG's side rather than every excluded augment
-        # being confirmed weak - so this means "no data", not "bad". Still
-        # worth showing (the icon match itself is trustworthy), never
-        # worth recommending (there is nothing to recommend it on).
+        # Nothing rated by either data source (see _tier_data_for_champion)
+        # - a genuinely obscure champion+augment pairing OP.GG has too few
+        # match samples for. Still worth showing (the icon match itself is
+        # trustworthy), never worth recommending (there is nothing to
+        # recommend it on).
         distinct_names = {augment_catalog.name(augment_id) for augment_id in candidates}
         return candidates[0], None, len(distinct_names) > 1
 
-    def _tier_data_for_champion(self, champion_id):
+    def _tier_data_for_champion(self, champion_id, champion_alias):
         if self._champion_id_this_game == champion_id and self._champion_augment_data is not None:
             return self._champion_augment_data
-        try:
-            data = opgg_client.get_aram_augments(champion_id)
-        except Exception:
-            logger.exception("AramAugmentAdvisor: OP.GG augment tier lookup failed")
-            data = {}
+
+        # Scraping OP.GG's own site first: it covers all 6 tiers (0-5),
+        # where the MCP tool only ever returns 3-5 - see core.opgg_scraper
+        # for the live diff that proved this. The MCP is a fallback for
+        # when the scrape comes back empty (network down, or OP.GG changed
+        # the page's internal structure), not a second opinion: both read
+        # the same underlying OP.GG numbers, just with different coverage.
+        data = {}
+        if champion_alias:
+            try:
+                data = scrape_aram_augments(champion_alias)
+            except Exception:
+                logger.exception("AramAugmentAdvisor: OP.GG augment page scrape failed")
+                data = {}
+        if not data and champion_id:
+            try:
+                data = opgg_client.get_aram_augments(champion_id)
+            except Exception:
+                logger.exception("AramAugmentAdvisor: OP.GG MCP augment tier lookup failed")
+                data = {}
+
         self._champion_id_this_game = champion_id
         self._champion_augment_data = data
         return data
@@ -283,15 +333,16 @@ class AramAugmentAdvisor(ThreadedFeature):
             return None
 
         champion_id = self._champion_id_for(champion_name)
-        tier_data = self._tier_data_for_champion(champion_id) if champion_id else {}
-        tier3_best = _tier3_best_performance(tier_data)
+        champion_alias = self._champion_alias_for(champion_name)
+        tier_data = self._tier_data_for_champion(champion_id, champion_alias) if (champion_id or champion_alias) else {}
+        best_tier_best = _best_tier_performance(tier_data)
 
         augments = []
         best_slot, best_key = None, None
         for entry in identified:
             augment_id, tier, ambiguous = self._resolve_candidates(entry["candidates"], tier_data)
             performance = tier_data.get(augment_id, {}).get("performance") if tier is not None else None
-            rank = None if ambiguous else augment_rank(tier, performance, tier3_best)
+            rank = None if ambiguous else augment_rank(tier, performance, best_tier_best)
             rarity_label = RARITY_LABELS.get(augment_catalog.rarity(augment_id))
             justification = (
                 "Several augments share this exact icon, so which one this is can't be told for sure."

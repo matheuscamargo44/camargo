@@ -30,42 +30,46 @@ def make_feature():
 # -- ranks: tier -> letter, and carving OP out of S --
 
 
-@pytest.mark.parametrize("tier,expected", [(3, "S"), (4, "A"), (5, "B")])
+@pytest.mark.parametrize(
+    "tier,expected", [(0, "S"), (1, "S"), (2, "A"), (3, "A"), (4, "B"), (5, "B")]
+)
 def test_augment_rank_maps_the_whole_scale_with_no_performance_data(tier, expected):
-    """OP.GG only ever returns tiers 3/4/5 for ARAM augments - verified
-    across five champions - so those three are the entire scale. Without a
-    performance score to compare within tier 3, nothing can be singled out
-    as OP, so it falls back to the plain tier mapping."""
-    assert augment_rank(tier, performance=None, tier3_best=None) == expected
+    """OP.GG's own site tracks six tiers (0 best - 5 worst), not three -
+    the MCP tool alone only ever returns 3/4/5, silently omitting the three
+    best (see core.opgg_scraper). Two raw tiers are grouped per letter so
+    the on-screen vocabulary stays OP/S/A/B. Without a performance score to
+    compare within tier 0, nothing can be singled out as OP, so it falls
+    back to the plain tier mapping."""
+    assert augment_rank(tier, performance=None, best_tier_best=None) == expected
 
 
 def test_augment_rank_of_an_unrated_augment_is_nothing():
-    assert augment_rank(None, performance=None, tier3_best=None) is None
+    assert augment_rank(None, performance=None, best_tier_best=None) is None
 
 
-def test_the_top_tier_3_performer_is_op():
-    """Checked live: tier-3 performance genuinely spreads (Viego 72.1-88.0,
-    Garen 63.2-81.8), so the very best of it is worth calling out rather
-    than lumping it in with the rest of S."""
-    assert augment_rank(tier=3, performance=88.0, tier3_best=88.0) == "OP"
+def test_the_top_tier_0_performer_is_op():
+    """Checked live: tier-0 performance genuinely spreads (Viego 76.5-88.7),
+    so the very best of it is worth calling out rather than lumping it in
+    with the rest of S."""
+    assert augment_rank(tier=0, performance=88.7, best_tier_best=88.7) == "OP"
 
 
 def test_a_tied_top_performer_is_also_op():
-    assert augment_rank(tier=3, performance=87.5, tier3_best=88.0) == "OP"
+    assert augment_rank(tier=0, performance=88.0, best_tier_best=88.7) == "OP"
 
 
-def test_a_merely_good_tier_3_augment_is_s_not_op():
-    assert augment_rank(tier=3, performance=72.1, tier3_best=88.0) == "S"
+def test_a_merely_good_tier_0_augment_is_s_not_op():
+    assert augment_rank(tier=0, performance=76.5, best_tier_best=88.7) == "S"
 
 
 def test_performance_never_promotes_across_tiers():
     """Tier 5 (the worst bucket) includes augments scoring well above tier
-    3's real range - up to 170 against tier 3's ~88 max, checked live - a
+    0's real range - up to 170 against tier 0's ~89 max, checked live - a
     low-sample-size artifact, not genuine strength. A tier-5 augment must
-    never outrank a tier-3 one just because its raw performance number is
+    never outrank a tier-0 one just because its raw performance number is
     higher.
     """
-    assert augment_rank(tier=5, performance=170.0, tier3_best=88.0) == "B"
+    assert augment_rank(tier=5, performance=170.0, best_tier_best=88.7) == "B"
 
 
 def test_lower_tier_numbers_are_better(monkeypatch):
@@ -73,7 +77,8 @@ def test_lower_tier_numbers_are_better(monkeypatch):
     best-to-worst (T3 outperforms T5 on their own performance scores), so
     an inverted comparison here would recommend the worst card on offer.
     No performance data is supplied, so the tier-3 candidate reads as
-    plain S rather than OP - see test_two_tier_3_cards_in_the_same_offer_*
+    plain A rather than OP - see
+    test_two_tier_0_cards_in_the_same_offer_break_the_tie_by_performance
     for the OP carve-out itself.
     """
     _patch_identification(
@@ -87,17 +92,17 @@ def test_lower_tier_numbers_are_better(monkeypatch):
     recommendation = feature._build_recommendation("Ahri")
 
     assert recommendation["best_slot"] == 1
-    assert recommendation["augments"][1]["rank"] == "S"
-    assert [augment["rank"] for augment in recommendation["augments"]] == ["B", "S", "A"]
+    assert recommendation["augments"][1]["rank"] == "A"
+    assert [augment["rank"] for augment in recommendation["augments"]] == ["B", "A", "B"]
 
 
-def test_two_tier_3_cards_in_the_same_offer_break_the_tie_by_performance(monkeypatch):
-    """Tier alone can't pick a winner between two tier-3 cards offered
-    together - the weaker of the two must not tie for best."""
+def test_two_tier_0_cards_in_the_same_offer_break_the_tie_by_performance(monkeypatch):
+    """Tier alone can't pick a winner between two tier-0 (the best tier)
+    cards offered together - the weaker of the two must not tie for best."""
     _patch_identification(
         monkeypatch,
         per_slot_candidates=[[1], [2], []],
-        tier_data={1: {"tier": 3, "performance": 72.1}, 2: {"tier": 3, "performance": 88.0}},
+        tier_data={1: {"tier": 0, "performance": 76.5}, 2: {"tier": 0, "performance": 88.7}},
     )
     feature = make_feature()
     feature._champ_name_to_id = {"Ahri": 103}
@@ -349,6 +354,71 @@ def test_tier_data_is_fetched_once_per_champion(monkeypatch):
     feature._build_recommendation("Ahri")
 
     assert calls == [103]
+
+
+# -- _tier_data_for_champion: scraping OP.GG's own site first, MCP as fallback --
+
+
+def test_scraped_data_is_preferred_and_the_mcp_is_not_called(monkeypatch):
+    """core.opgg_scraper covers all six tiers; the MCP tool only 3-5 (see
+    module docstring) - so a successful scrape must win outright, with the
+    MCP never even called."""
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "scrape_aram_augments", lambda alias: {1: {"tier": 0, "performance": 88.7}})
+
+    def must_not_be_called(champion_id):
+        raise AssertionError("must not fall back to the MCP when the scrape succeeded")
+
+    monkeypatch.setattr(module.opgg_client, "get_aram_augments", must_not_be_called)
+
+    feature = make_feature()
+    data = feature._tier_data_for_champion(champion_id=103, champion_alias="ahri")
+
+    assert data == {1: {"tier": 0, "performance": 88.7}}
+
+
+def test_falls_back_to_the_mcp_when_the_scrape_comes_back_empty(monkeypatch):
+    """A scrape failure (network down, or OP.GG's page structure changed)
+    must not lose the feature entirely - the narrower MCP data is still
+    better than nothing."""
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "scrape_aram_augments", lambda alias: {})
+    monkeypatch.setattr(module.opgg_client, "get_aram_augments", lambda champion_id: {1: {"tier": 3}})
+
+    feature = make_feature()
+    data = feature._tier_data_for_champion(champion_id=103, champion_alias="ahri")
+
+    assert data == {1: {"tier": 3}}
+
+
+def test_falls_back_to_the_mcp_when_no_alias_is_known(monkeypatch):
+    """Some champion lookups may only resolve an id, not an alias (e.g. an
+    LCU response missing the field) - the feature must still work off the
+    MCP rather than skip tier data entirely."""
+    import features.aram_augment_advisor as module
+
+    def must_not_be_called(alias):
+        raise AssertionError("must not scrape without an alias")
+
+    monkeypatch.setattr(module, "scrape_aram_augments", must_not_be_called)
+    monkeypatch.setattr(module.opgg_client, "get_aram_augments", lambda champion_id: {1: {"tier": 3}})
+
+    feature = make_feature()
+    data = feature._tier_data_for_champion(champion_id=103, champion_alias=None)
+
+    assert data == {1: {"tier": 3}}
+
+
+def test_champion_alias_is_read_from_the_champion_list():
+    """OP.GG's URL slug is the champion's DataDragon alias lowercased -
+    see core.opgg_scraper."""
+    feature = make_feature()
+    feature._champ_name_to_alias = {"Kai'Sa": "kaisa"}
+
+    assert feature._champion_alias_for("Kai'Sa") == "kaisa"
+    assert feature._champion_alias_for("Unknown Champion") is None
 
 
 # -- picker open/close drives the badge lifecycle --

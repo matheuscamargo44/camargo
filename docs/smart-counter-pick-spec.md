@@ -442,3 +442,42 @@ card's justification now names it: `"No OP.GG performance data for this Prismati
 intentionally not strictly "better" - it's about how build-defining the effect is), but it keeps a
 no-data card from reading as completely blank. `AugmentCatalog.rarity()`, `RARITY_LABELS` in
 `aram_augment_advisor.py`.
+
+### Correction: OP.GG's own site *does* have fuller data — the above research checked the wrong page (2026-08-26)
+
+The "researched whether a better data source exists" conclusion above was wrong on its central claim. It
+checked `op.gg/lol/modes/aram-mayhem/{champion}/build` (a curated 10-augment preview with no stats) and
+stopped there. The champion's dedicated `.../{champion}/augments` page was never checked, and that page
+embeds the full per-augment dataset server-side (a Next.js React Server Component payload in the raw HTML
+- no headless browser needed, a plain GET already returns it).
+
+Diffed it directly against the MCP tool's own output for Viego to be sure it's the same underlying numbers
+and not a different computation: id 1103 "Bread And Butter" comes back as `tier 3, performance 72.1` from
+both. Identical. But the *coverage* differs enormously:
+
+- The website tracks **six** tiers, 0 (best) through 5 (worst) - not three.
+- The MCP tool only ever returns tiers 3-5. For Viego that's 135 of 200 real augments (not "~600" as
+  guessed in the section above - that figure conflated the game's whole augment roster across every mode
+  with the much smaller pool actually offered to one champion in ARAM Mayhem).
+- The 65 augments the MCP omits are tiers 0-2 - the champion's three *best* bands, not obscure ones.
+  Confirmed live: tier 0's performance for Viego runs 76.5-88.7 and tier 1's 71.1-102.2, both tight and
+  sane - nothing about them looks like a data-quality reason to withhold them.
+
+So the "no OP.GG data" card shown on most 3-card offers was frequently not a genuine cold-start gap at
+all - it was often the champion's *strongest* augment, simply never asked about because the sanctioned MCP
+tool structurally can't return it.
+
+**What shipped**: `core/opgg_scraper.py` reads the champion's `.../augments` page directly and returns the
+full 0-5 range; `AramAugmentAdvisor._tier_data_for_champion` tries it first and only falls back to the MCP
+tool (`opgg_client.get_aram_augments`) if the scrape comes back empty (network down, or OP.GG changed the
+page's internal structure - this is unavoidably more fragile than the documented MCP, hence keeping the
+MCP as a safety net rather than removing it). `TIER_RANKS` now groups the six raw tiers two-per-letter
+(`{0: "S", 1: "S", 2: "A", 3: "A", 4: "B", 5: "B"}`) so the on-screen OP/S/A/B vocabulary didn't need to
+grow; OP is now carved out of tier 0 instead of tier 3, using the same margin technique as before.
+
+This does not reopen the Riot-policy question raised earlier in this session (`developer.riotgames.com`'s
+"Products cannot display win rates for Augments" line) - the display already showed OP.GG win-rate-derived
+tier/performance data before this change; this only changes which of OP.GG's own numbers get read, not
+whether numbers are shown at all. It does raise the same fragility trade-off already accepted for
+`augment_catalog`'s icon matching: this reads OP.GG's undocumented internal page structure, and will need
+re-calibrating if they rebuild that page.
