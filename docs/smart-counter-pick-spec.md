@@ -409,3 +409,36 @@ The actual bug was the wording: "Not among the stronger augments... in this data
 verdict about the augment, when it should read as "no information available". Reworded to
 `"No OP.GG performance data for this pick with {champion}."` - same underlying logic, just no longer
 implying a judgment the data doesn't support.
+
+### Researched whether a better data source exists (2026-08-25) — it doesn't, this is a real cold-start gap
+
+User wanted the "no data" case actually solved, not just reworded, and asked to research how other
+platforms handle it. Checked directly rather than assuming:
+
+- **OP.GG's own website** (`op.gg/lol/modes/aram-mayhem/{champion}/build`) shows only 10 curated augments
+  per champion, no win rate or tier at all - less data than the MCP tool already gives.
+- **The same MCP tool, without `champion_id`**: the JSON schema doesn't mark it required, so tried calling
+  without it hoping for a global (higher-sample-size) tier list. The server rejects this at the business
+  logic layer regardless of what the schema says - `champion_id` is hard-required in practice.
+- **The `popular` (pick rate) field**: checked whether it had broader coverage than `tier` as a fallback
+  signal - it does not; it's returned for the exact same filtered 135-augment set, not a wider one.
+- **U.GG's augment tier list** - blocked the fetch (403).
+- **aramgg.com** - a real tier list, but only 207 augments total (not per-champion), sourced from
+  "Tencent China public statistics" - a different regional population, and not a source with the kind of
+  transparency/sanctioning that justified building on OP.GG's MCP in the first place.
+- **arammayhem.com** - does show real per-champion-per-augment win rates, but discloses no data source and
+  no API - integrating with it would be the exact thing already ruled out for Blitz earlier in this
+  project (reverse-engineering an opaque third party).
+
+Conclusion: this isn't a solved problem elsewhere that camargo is failing to plug into. Real
+per-champion-per-augment win-rate data is inherently sparse - roughly 600 augments × ~170 champions is far
+more combinations than there are augment-pick events to reliably rate most of them, and OP.GG's own
+website reflects that same sparsity (curated picks, not full stats, on their per-champion page).
+
+**What shipped instead**: augment *rarity* (Silver/Gold/Prismatic/...) is static game data, present for
+100% of augments regardless of statistical coverage - unlike tier, it can never be missing. An unrated
+card's justification now names it: `"No OP.GG performance data for this Prismatic pick with {champion}."`
+- verified live against real unrated Prismatic augments for Viego. Not a quality signal (rarity is
+intentionally not strictly "better" - it's about how build-defining the effect is), but it keeps a
+no-data card from reading as completely blank. `AugmentCatalog.rarity()`, `RARITY_LABELS` in
+`aram_augment_advisor.py`.

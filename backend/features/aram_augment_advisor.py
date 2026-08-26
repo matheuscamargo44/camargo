@@ -82,8 +82,21 @@ _RANK_JUSTIFICATIONS = {
     "B": "Below the stronger options for {champion}.",
 }
 
+#: Community Dragon's raw rarity string -> a human label. Researched live
+#: (2026-08-25): the full catalog has 5 values; kBronze/kEventChoice may not
+#: even be offered in ARAM Mayhem specifically (never seen live), kept here
+#: so an unrecognized value degrades to omitting the rarity rather than
+#: crashing or showing a raw "kBronze"-style string.
+RARITY_LABELS = {
+    "kSilver": "Silver",
+    "kGold": "Gold",
+    "kPrismatic": "Prismatic",
+    "kBronze": "Bronze",
+    "kEventChoice": "Event",
+}
 
-def augment_justification(champion_name, rank, performance):
+
+def augment_justification(champion_name, rank, performance, rarity_label=None):
     """Short, honest reasoning grounded in OP.GG's real per-champion data.
 
     There is no textual "why" from OP.GG for augments - `desc` is just the
@@ -105,9 +118,20 @@ def augment_justification(champion_name, rank, performance):
     OP.GG needs a minimum sample size before it will rate one. With that
     little coverage, most 3-card offers will have at least one unrated
     card by pure chance, so this needs to read as "no data", not a verdict.
+
+    `rarity_label` (Silver/Gold/Prismatic/...) is the one thing still known
+    about an unrated augment: it's static game data, not a statistic, so
+    it's never missing the way a tier can be. Researched deliberately after
+    it came up that no data source - OP.GG's own site included - publishes
+    fuller per-champion coverage than this MCP tool already gives us; the
+    sparsity looks like a genuine cold-start data problem (real match
+    samples for a specific champion+augment pairing), not a gap this app
+    is failing to fill from a better source. Naming the rarity at least
+    keeps a "no data" card from reading as completely blank.
     """
     if rank is None:
-        return f"No OP.GG performance data for this pick with {champion_name}."
+        pick = f"this {rarity_label} pick" if rarity_label else "this pick"
+        return f"No OP.GG performance data for {pick} with {champion_name}."
     text = _RANK_JUSTIFICATIONS[rank].format(champion=champion_name)
     if rank in ("OP", "S") and performance is not None:
         text += f" (score {performance:.0f})"
@@ -268,10 +292,11 @@ class AramAugmentAdvisor(ThreadedFeature):
             augment_id, tier, ambiguous = self._resolve_candidates(entry["candidates"], tier_data)
             performance = tier_data.get(augment_id, {}).get("performance") if tier is not None else None
             rank = None if ambiguous else augment_rank(tier, performance, tier3_best)
+            rarity_label = RARITY_LABELS.get(augment_catalog.rarity(augment_id))
             justification = (
                 "Several augments share this exact icon, so which one this is can't be told for sure."
                 if ambiguous
-                else augment_justification(champion_name, rank, performance)
+                else augment_justification(champion_name, rank, performance, rarity_label)
             )
             augments.append(
                 {
@@ -285,6 +310,7 @@ class AramAugmentAdvisor(ThreadedFeature):
                     "icon_url": augment_catalog.icon_url(augment_id),
                     "tier": tier,
                     "rank": rank,
+                    "rarity": rarity_label,
                     "justification": justification,
                     "ambiguous": ambiguous,
                 }

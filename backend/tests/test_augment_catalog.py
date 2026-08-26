@@ -121,6 +121,20 @@ def test_icon_url_strips_prefix_lowercases_and_selects_variant(large, expected_s
     assert url == f"https://raw.communitydragon.org/latest/game/assets/ux/cherry/augments/icons/{expected_suffix}"
 
 
+def test_rarity_returns_the_stored_value():
+    """Static game data, unlike tier/performance - present for every
+    augment regardless of whether OP.GG has enough samples to rate it."""
+    catalog = _catalog_with(FIXTURE_SET)
+
+    assert catalog.rarity(2132) == "kGold"
+
+
+def test_rarity_of_an_unknown_augment_is_none():
+    catalog = _catalog_with(FIXTURE_SET)
+
+    assert catalog.rarity(999999) is None
+
+
 def test_cache_round_trips(tmp_path, monkeypatch):
     import core.augment_catalog as augment_catalog_module
 

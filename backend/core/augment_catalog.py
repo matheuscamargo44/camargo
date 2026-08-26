@@ -252,6 +252,18 @@ class AugmentCatalog:
         entry = self._augments.get(augment_id)
         return _icon_url(entry["icon_path"], large=True) if entry else None
 
+    def rarity(self, augment_id):
+        """Raw Community Dragon rarity string (e.g. "kGold"), or None.
+
+        Unlike tier/performance, this is static game data - present for
+        every augment regardless of whether OP.GG has enough match samples
+        to rate it. Useful as a fallback signal when there is no rating:
+        see RARITY_LABELS in features/aram_augment_advisor.py.
+        """
+        self._ensure_loaded()
+        entry = self._augments.get(augment_id)
+        return entry["rarity"] if entry else None
+
 
 #: Shared across every consumer - one catalog, built once.
 augment_catalog = AugmentCatalog()

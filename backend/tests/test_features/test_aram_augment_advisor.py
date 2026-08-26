@@ -133,6 +133,51 @@ def test_justification_for_an_unrated_augment_says_why_without_a_score():
     assert "Viego" in text
 
 
+def test_justification_for_an_unrated_augment_names_the_rarity_when_known():
+    """Rarity is static game data, present for every augment regardless of
+    whether OP.GG has enough samples to rate it - so an unrated card need
+    not read as completely blank."""
+    text = augment_justification("Viego", None, None, rarity_label="Prismatic")
+
+    assert "Prismatic" in text
+    assert "Viego" in text
+
+
+def test_justification_for_an_unrated_augment_without_a_known_rarity_still_reads_fine():
+    text = augment_justification("Viego", None, None, rarity_label=None)
+
+    assert "None" not in text
+
+
+@pytest.mark.parametrize("raw,expected", [("kSilver", "Silver"), ("kGold", "Gold"), ("kPrismatic", "Prismatic")])
+def test_rarity_labels_cover_the_common_rarities(raw, expected):
+    from features.aram_augment_advisor import RARITY_LABELS
+
+    assert RARITY_LABELS[raw] == expected
+
+
+def test_build_recommendation_includes_the_rarity_for_an_unrated_card(monkeypatch):
+    """End-to-end: an unrated augment's card still carries its rarity, not
+    just a bare 'no data' with nothing else to go on."""
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "capture_region", lambda box: object())
+    monkeypatch.setattr(module.augment_catalog, "identify", lambda image: [1])
+    monkeypatch.setattr(module.augment_catalog, "name", lambda augment_id: "Mystery Pick")
+    monkeypatch.setattr(module.augment_catalog, "icon_url", lambda augment_id: "http://icon/1")
+    monkeypatch.setattr(module.augment_catalog, "rarity", lambda augment_id: "kPrismatic")
+    monkeypatch.setattr(module.opgg_client, "get_aram_augments", lambda champion_id: {})  # nothing rated
+
+    feature = make_feature()
+    feature._champ_name_to_id = {"Ahri": 103}
+    recommendation = feature._build_recommendation("Ahri")
+
+    augment = recommendation["augments"][0]
+    assert augment["rank"] is None
+    assert augment["rarity"] == "Prismatic"
+    assert "Prismatic" in augment["justification"]
+
+
 # -- _resolve_candidates: the ambiguity policy --
 
 
@@ -206,6 +251,7 @@ def _patch_identification(monkeypatch, per_slot_candidates, tier_data):
     monkeypatch.setattr(module.augment_catalog, "identify", lambda image: next(calls))
     monkeypatch.setattr(module.augment_catalog, "name", lambda augment_id: f"Augment {augment_id}")
     monkeypatch.setattr(module.augment_catalog, "icon_url", lambda augment_id: f"http://icon/{augment_id}")
+    monkeypatch.setattr(module.augment_catalog, "rarity", lambda augment_id: "kGold")
     monkeypatch.setattr(module.opgg_client, "get_aram_augments", lambda champion_id: tier_data)
 
 
@@ -266,6 +312,7 @@ def test_an_opgg_failure_still_shows_the_identified_augments(monkeypatch):
     monkeypatch.setattr(module.augment_catalog, "identify", lambda image: [1])
     monkeypatch.setattr(module.augment_catalog, "name", lambda augment_id: "Some Augment")
     monkeypatch.setattr(module.augment_catalog, "icon_url", lambda augment_id: "http://icon/1")
+    monkeypatch.setattr(module.augment_catalog, "rarity", lambda augment_id: "kGold")
 
     def raise_error(champion_id):
         raise RuntimeError("OP.GG unreachable")
@@ -288,6 +335,7 @@ def test_tier_data_is_fetched_once_per_champion(monkeypatch):
     monkeypatch.setattr(module.augment_catalog, "identify", lambda image: [1])
     monkeypatch.setattr(module.augment_catalog, "name", lambda augment_id: "A")
     monkeypatch.setattr(module.augment_catalog, "icon_url", lambda augment_id: "u")
+    monkeypatch.setattr(module.augment_catalog, "rarity", lambda augment_id: "kGold")
 
     def fake_lookup(champion_id):
         calls.append(champion_id)
