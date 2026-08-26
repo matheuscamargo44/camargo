@@ -8,7 +8,6 @@ there would be lost each time the user updates the app.
 """
 import copy
 import json
-import sys
 import threading
 from pathlib import Path
 

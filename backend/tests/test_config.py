@@ -1,4 +1,5 @@
 from core import config as config_module
+from core import paths as paths_module
 
 
 def test_load_config_fills_defaults(tmp_path, monkeypatch):
@@ -60,8 +61,14 @@ def test_get_automation_delay_clamps_range():
     assert config_module.get_automation_delay(config, "auto_accept", 0.0) == 0.0
 
 
+# `sys.frozen` is read by core.paths.is_frozen(), which is what config.py
+# actually calls. These used to patch `config_module.sys` - which worked only
+# because `sys` is a singleton reachable through any importing module's
+# namespace, and read as though config.py decided frozen-ness itself. Patching
+# the module that owns the behaviour points the test at the real collaborator,
+# and stops it breaking when config.py drops an import it never used.
 def test_config_path_uses_appdata_when_frozen(monkeypatch, tmp_path):
-    monkeypatch.setattr(config_module.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(paths_module.sys, "frozen", True, raising=False)
     monkeypatch.setenv("APPDATA", str(tmp_path))
 
     path = config_module._config_path()
@@ -70,7 +77,7 @@ def test_config_path_uses_appdata_when_frozen(monkeypatch, tmp_path):
 
 
 def test_config_path_next_to_source_in_dev(monkeypatch):
-    monkeypatch.setattr(config_module.sys, "frozen", False, raising=False)
+    monkeypatch.setattr(paths_module.sys, "frozen", False, raising=False)
 
     path = config_module._config_path()
     expected_dir = config_module.Path(config_module.__file__).resolve().parent.parent

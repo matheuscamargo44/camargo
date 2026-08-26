@@ -12,7 +12,6 @@ a hot path - without being flaky on a slower CI machine.
 import time
 
 import pytest
-from fastapi.testclient import TestClient
 
 import api.server as server
 from core.auth import AUTH_TOKEN, TOKEN_HEADER

@@ -117,7 +117,7 @@ class ChallengeTitles(Feature):
             action_desc = "cleared"
         else:
             payload["title"] = str(title_id)
-            action_desc = f"updated"
+            action_desc = "updated"
 
         update_res = self.lcu.lcu_request("POST", "/lol-challenges/v1/update-player-preferences/", payload)
         if update_res.status_code not in (200, 201, 204):
