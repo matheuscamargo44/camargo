@@ -16,6 +16,7 @@ from features.dodge import Dodge
 from features.friend_requests import FriendRequestsManager
 from features.instalock import Instalock
 from features.autoban import AutoBan
+from features.lobby_reveal import LobbyReveal
 from features.loot import MassDisenchant
 from features.party_invite import AutoPartyInvite
 from features.presence_status import PresenceStatus
@@ -39,6 +40,8 @@ FEATURE_CLASSES = [
     Dodge,
     AramBenchSwap,
     RandomSkinPicker,
+    # Social
+    LobbyReveal,
     # Customization
     Background,
     ProfileIcon,

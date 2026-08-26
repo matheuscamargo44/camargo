@@ -52,6 +52,9 @@ DEFAULT_CONFIG = {
     "auto_honor": {
         "enabled": False,
     },
+    "lobby_reveal": {
+        "provider": "porofessor",
+    },
     "auto_party_invite": {
         "enabled": False,
         "summoners": "",

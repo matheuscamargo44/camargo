@@ -83,6 +83,7 @@ function buildChampionListDisplay(field, names) {
 }
 
 const FEATURE_DESCRIPTIONS = {
+  lobby_reveal: "Open everyone in champ select on a scouting site",
   auto_accept: "Accepts match ready checks automatically",
   auto_play_again: "Auto-starts queue in lobby and after matches",
   auto_honor: "Honors teammate automatically post-game",

@@ -114,6 +114,31 @@ export const FEATURE_ACTIONS = {
       modalTitle: "Choose Challenge Title",
     },
   ],
+  lobby_reveal: [
+    {
+      label: "Reveal",
+      action: "reveal",
+      modalTitle: "Reveal Lobby",
+      confirmOnly: true,
+    },
+    {
+      label: "Site",
+      action: "set_provider",
+      modalTitle: "Lobby Reveal Site",
+      fields: [
+        {
+          name: "provider",
+          label: "Open lobbies on",
+          type: "select",
+          options: [
+            { value: "porofessor", label: "Porofessor" },
+            { value: "opgg", label: "OP.GG" },
+            { value: "ugg", label: "U.GG" },
+          ],
+        },
+      ],
+    },
+  ],
   mass_disenchant: [
     {
       label: "Forge Keys",
