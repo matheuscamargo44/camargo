@@ -47,6 +47,17 @@
       box-shadow: 0 0 0 2px rgba(109, 139, 255, 0.35), 0 4px 16px rgba(0, 0, 0, 0.4);
     }
 
+    /* A rarity-based guess (no OP.GG data for any of the 3 cards) still
+       points at something, but must never read as the same solid-blue,
+       data-backed highlight above - dashed and amber instead of solid
+       and blue, so it's recognizable as a lower-confidence pick from
+       across the screen, not just from the "Guess" label up close. */
+    .aram-badge.is-best.is-guess {
+      border-color: #f0a830;
+      border-style: dashed;
+      box-shadow: 0 0 0 2px rgba(240, 168, 48, 0.28), 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
     .aram-badge-header {
       display: flex;
       align-items: center;
@@ -100,6 +111,14 @@
     .aram-badge-rank.rank-s { background: #f0c040; }
     .aram-badge-rank.rank-a { background: #6d8bff; }
     .aram-badge-rank.rank-b { background: #6f7079; color: #e8e8ec; }
+    /* Deliberately not a solid fill like OP/S/A/B above - an outline in
+       the same amber as the card border (see .is-guess) reads as "not a
+       real grade" even at a glance, before the "Guess" text registers. */
+    .aram-badge-rank.rank-guess {
+      background: transparent;
+      border: 1.5px dashed #f0a830;
+      color: #f0a830;
+    }
 
     .aram-badge-justification {
       font-size: 11px;

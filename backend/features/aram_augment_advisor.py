@@ -117,6 +117,24 @@ RARITY_LABELS = {
 }
 
 
+#: Riot's own documented design intent for rarity (not a community guess -
+#: see docs/smart-counter-pick-spec.md for the research): Prismatic
+#: augments carry "the most powerful, game-changing effects", Gold "strong
+#: effects", Silver "basic stat boosts and utility". Used only as a
+#: last-resort tiebreaker in _build_recommendation, when none of the 3
+#: offered cards has real OP.GG performance data at all - never mixed with,
+#: and never allowed to override, a real tier/performance-backed rank.
+#: Bronze/Event are deliberately absent: never confirmed live in ARAM
+#: Mayhem (see RARITY_LABELS), so there is no basis to rank them at all.
+RARITY_FALLBACK_RANK = {"Prismatic": 0, "Gold": 1, "Silver": 2}
+
+#: The rank value used to flag the rarity-fallback pick specifically -
+#: distinct from a real OP/S/A/B (see augment_rank), which is why it isn't
+#: a key in RANK_JUSTIFICATIONS: its text is generated separately, in
+#: _build_recommendation, always naming the rarity it was picked on.
+GUESS_RANK = "GUESS"
+
+
 def augment_justification(champion_name, rank, performance, rarity_label=None):
     """Short, honest reasoning grounded in OP.GG's real per-champion data.
 
@@ -344,6 +362,33 @@ class AramAugmentAdvisor(ThreadedFeature):
         self._champion_augment_data = data
         return data
 
+    @staticmethod
+    def _apply_rarity_fallback(augments, champion_name):
+        """Only called when nothing on offer has a real OP.GG rank - the
+        player still wants an answer, and rarity is the one signal left
+        that's never missing (see RARITY_FALLBACK_RANK for why it's a
+        legitimate, Riot-documented one, not an invented heuristic).
+
+        Mutates the winning card's `rank`/`justification` in place to
+        GUESS_RANK and a justification that names the rarity it was picked
+        on, so it can never be mistaken for a real, data-backed pick.
+        Returns whether a fallback pick was actually made - false when even
+        rarity is unknown for every card (an ambiguous icon has no known
+        rarity either, so it's excluded the same as everywhere else here).
+        """
+        candidates = [a for a in augments if not a["ambiguous"] and a["rarity"] in RARITY_FALLBACK_RANK]
+        if not candidates:
+            return False
+
+        best = min(candidates, key=lambda a: RARITY_FALLBACK_RANK[a["rarity"]])
+        best["rank"] = GUESS_RANK
+        best["justification"] = (
+            f"No OP.GG performance data for any of the 3 cards this game - picked as the best guess "
+            f"since {best['rarity']} tends to be the strongest of the three ARAM Mayhem rarities. "
+            f"Not a data-backed pick for {champion_name}."
+        )
+        return True
+
     def _build_recommendation(self, champion_name):
         identified = self._identify_offered_augments()
         if not identified:
@@ -402,12 +447,19 @@ class AramAugmentAdvisor(ThreadedFeature):
                 if best_key is None or key < best_key:
                     best_slot, best_key = entry["slot"], key
 
+        best_slot_is_guess = False
+        if best_slot is None:
+            best_slot_is_guess = self._apply_rarity_fallback(augments, champion_name)
+            if best_slot_is_guess:
+                best_slot = next(a["slot"] for a in augments if a["rank"] == GUESS_RANK)
+
         return {
             "active": True,
             "champion": champion_name,
             "regions": AUGMENT_CARD_REGIONS,
             "augments": augments,
             "best_slot": best_slot,
+            "best_slot_is_guess": best_slot_is_guess,
         }
 
     def _on_picker_opened(self, champion_name):

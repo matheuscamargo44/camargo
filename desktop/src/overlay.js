@@ -6,8 +6,9 @@ function renderBadges(payload) {
   container.innerHTML = "";
 
   for (const badge of badges) {
+    const isGuess = badge.rank === "GUESS";
     const el = document.createElement("div");
-    el.className = "aram-badge" + (badge.isBest ? " is-best" : "");
+    el.className = "aram-badge" + (badge.isBest ? " is-best" : "") + (isGuess ? " is-guess" : "");
     // Anchored above the card (bottom-anchored so the box grows upward,
     // regardless of how many lines the justification wraps to),
     // horizontally centered on it.
@@ -42,9 +43,11 @@ function renderBadges(payload) {
     if (badge.rank) {
       const rank = document.createElement("span");
       // Colour by rank so the best card reads at a glance without having
-      // to compare three badges.
+      // to compare three badges. GUESS is deliberately not a colour in
+      // the same family as OP/S/A/B (see styles below) - it must never
+      // look like a data-backed grade.
       rank.className = `aram-badge-rank rank-${badge.rank.toLowerCase()}`;
-      rank.textContent = badge.rank;
+      rank.textContent = isGuess ? "Guess" : badge.rank;
       header.appendChild(rank);
     }
 

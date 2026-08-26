@@ -481,3 +481,35 @@ tier/performance data before this change; this only changes which of OP.GG's own
 whether numbers are shown at all. It does raise the same fragility trade-off already accepted for
 `augment_catalog`'s icon matching: this reads OP.GG's undocumented internal page structure, and will need
 re-calibrating if they rebuild that page.
+
+### Rarity fallback: the player always wants an answer, even a weak one (2026-08-27)
+
+User feedback, stated directly: the player always wants the strongest of the 3 offered cards highlighted -
+"no highlight anywhere" (the previous behavior whenever none of the 3 had real OP.GG data, or an icon was
+ambiguous) reads as a bug, not as honesty, from the player's side of the screen.
+
+Researched whether there's an established answer for this specific case (all 3 offered cards genuinely
+unrated) before picking one. Two findings:
+
+- **Rarity really is Riot's own documented power signal**, not a community guess or something invented for
+  this fallback: Prismatic is officially described as carrying "the most powerful, game-changing effects",
+  Gold "strong effects", Silver "basic stat boosts and utility". A legitimate last-resort tiebreaker.
+- **No competing tool solves this live.** Blitz, OP.GG's own site, U.GG, and Mobalytics all publish
+  pre-curated "recommended augments" guides - lists of *already-good* augments picked ahead of time - not a
+  live reaction to whichever 3 specific cards a real pick screen just offered. None of them document a
+  "what if none of these 3 has data" fallback, because their product shape never has to answer it. This
+  tool does (it reacts to the real offer), so there was no existing answer to adopt - this is a genuine
+  product decision, made here rather than found.
+
+**What shipped**: when the real tier/performance pass leaves every card unranked, `_apply_rarity_fallback`
+(`aram_augment_advisor.py`) picks the highest-rarity of the 3 (Prismatic > Gold > Silver) as a `GUESS_RANK`
+pick - `recommendation["best_slot_is_guess"]` flags it so the badge never looks like a data-backed OP/S/A/B.
+The card's own justification names the rarity and says plainly it isn't data-backed. Ambiguous cards (no
+known rarity, since identity itself is unknown) are excluded from the fallback pool the same as everywhere
+else in this pipeline. If even rarity is unknown for all 3 (an unrecognized rarity string), `best_slot`
+stays honestly empty - there is truly nothing left to guess with at that point.
+
+Visually: the guess still gets the "best" border highlight so it stands out from the other 2 unhighlighted
+cards, but dashed and amber instead of solid blue, and its rank pill reads "Guess" as an amber outline
+instead of a solid OP/S/A/B fill - recognizable as lower-confidence from across the screen, not just on
+close reading of the text. See `.is-guess` / `.rank-guess` in `overlay.html`.

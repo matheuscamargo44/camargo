@@ -163,7 +163,10 @@ def test_rarity_labels_cover_the_common_rarities(raw, expected):
 
 def test_build_recommendation_includes_the_rarity_for_an_unrated_card(monkeypatch):
     """End-to-end: an unrated augment's card still carries its rarity, not
-    just a bare 'no data' with nothing else to go on."""
+    just a bare 'no data' with nothing else to go on. All 3 slots here
+    resolve to the same Prismatic augment id, so the rarity fallback (see
+    test_rarity_fallback_* below) also kicks in - the first of the 3
+    identical cards becomes the guess."""
     import features.aram_augment_advisor as module
 
     monkeypatch.setattr(module, "capture_region", lambda box: object())
@@ -178,7 +181,7 @@ def test_build_recommendation_includes_the_rarity_for_an_unrated_card(monkeypatc
     recommendation = feature._build_recommendation("Ahri")
 
     augment = recommendation["augments"][0]
-    assert augment["rank"] is None
+    assert augment["rank"] == module.GUESS_RANK
     assert augment["rarity"] == "Prismatic"
     assert "Prismatic" in augment["justification"]
 
@@ -366,7 +369,11 @@ def test_an_opgg_failure_still_shows_the_identified_augments(monkeypatch):
     recommendation = feature._build_recommendation("Ahri")
 
     assert recommendation["augments"][0]["tier"] is None
-    assert recommendation["best_slot"] is None
+    # No real tier data exists (OP.GG unreachable), so the rarity fallback
+    # picks this card as the best guess rather than leaving best_slot empty
+    # - see test_rarity_fallback_wins_when_nothing_is_data_backed below.
+    assert recommendation["best_slot"] == 0
+    assert recommendation["best_slot_is_guess"] is True
 
 
 def test_tier_data_is_fetched_once_per_champion(monkeypatch):
@@ -420,8 +427,105 @@ def test_an_empty_lookup_result_is_not_cached_and_is_retried(monkeypatch):
     second = feature._build_recommendation("Ahri")
 
     assert calls == [103, 103]  # retried, not served from a cached {}
-    assert first["augments"][0]["rank"] is None
+    # No real tier data on the first call - the rarity fallback picks a
+    # guess rather than leaving it truly unranked.
+    assert first["augments"][0]["rank"] == module.GUESS_RANK
     assert second["augments"][0]["rank"] == "A"
+
+
+# -- rarity fallback: still pointing at *something* when nothing is data-backed --
+
+
+def _patch_identification_with_rarities(monkeypatch, per_slot_ids, rarities):
+    """Like _patch_identification, but each slot resolves to its own
+    augment id with its own rarity, and OP.GG has nothing for any of them -
+    the exact situation the rarity fallback exists for."""
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "capture_region", lambda box: object())
+    calls = iter([[augment_id] for augment_id in per_slot_ids])
+    monkeypatch.setattr(module.augment_catalog, "identify", lambda image: next(calls))
+    monkeypatch.setattr(module.augment_catalog, "name", lambda augment_id: f"Augment {augment_id}")
+    monkeypatch.setattr(module.augment_catalog, "icon_url", lambda augment_id: f"http://icon/{augment_id}")
+    monkeypatch.setattr(module.augment_catalog, "rarity", lambda augment_id: rarities[augment_id])
+    monkeypatch.setattr(module.opgg_client, "get_aram_augments", lambda champion_id: {})
+
+
+def test_rarity_fallback_picks_the_highest_rarity_when_nothing_has_real_data(monkeypatch):
+    _patch_identification_with_rarities(
+        monkeypatch,
+        per_slot_ids=[1, 2, 3],
+        rarities={1: "kSilver", 2: "kPrismatic", 3: "kGold"},
+    )
+    feature = make_feature()
+    feature._champ_name_to_id = {"Ahri": 103}
+
+    recommendation = feature._build_recommendation("Ahri")
+
+    assert recommendation["best_slot"] == 1  # the Prismatic card
+    assert recommendation["best_slot_is_guess"] is True
+    assert recommendation["augments"][1]["rank"] == "GUESS"
+    assert "Prismatic" in recommendation["augments"][1]["justification"]
+
+
+def test_rarity_fallback_does_not_touch_the_other_cards(monkeypatch):
+    _patch_identification_with_rarities(
+        monkeypatch,
+        per_slot_ids=[1, 2, 3],
+        rarities={1: "kSilver", 2: "kPrismatic", 3: "kGold"},
+    )
+    feature = make_feature()
+    feature._champ_name_to_id = {"Ahri": 103}
+
+    recommendation = feature._build_recommendation("Ahri")
+
+    assert recommendation["augments"][0]["rank"] is None  # Silver - still a plain "no data" card
+    assert recommendation["augments"][2]["rank"] is None  # Gold - still a plain "no data" card
+
+
+def test_rarity_fallback_never_fires_when_a_real_rank_already_won(monkeypatch):
+    """The fallback is a last resort - if even one card has real OP.GG
+    data, that's what wins, never a rarity guess."""
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "capture_region", lambda box: object())
+    calls = iter([[1], [2], []])
+    monkeypatch.setattr(module.augment_catalog, "identify", lambda image: next(calls))
+    monkeypatch.setattr(module.augment_catalog, "name", lambda augment_id: f"Augment {augment_id}")
+    monkeypatch.setattr(module.augment_catalog, "icon_url", lambda augment_id: f"http://icon/{augment_id}")
+    monkeypatch.setattr(module.augment_catalog, "rarity", lambda augment_id: "kSilver" if augment_id == 1 else "kPrismatic")
+    monkeypatch.setattr(module.opgg_client, "get_aram_augments", lambda champion_id: {1: {"tier": 4}})
+
+    feature = make_feature()
+    feature._champ_name_to_id = {"Ahri": 103}
+
+    recommendation = feature._build_recommendation("Ahri")
+
+    assert recommendation["best_slot"] == 0  # the real "B" rank, not the Prismatic guess
+    assert recommendation["best_slot_is_guess"] is False
+
+
+def test_rarity_fallback_has_nothing_to_go_on_when_rarity_is_also_unknown(monkeypatch):
+    """An unrecognized rarity string (see RARITY_LABELS) degrades to
+    omitting the rarity entirely - if that's true for every card, there is
+    truly nothing left to guess with, and best_slot stays honestly empty."""
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "capture_region", lambda box: object())
+    calls = iter([[1], [2], [3]])
+    monkeypatch.setattr(module.augment_catalog, "identify", lambda image: next(calls))
+    monkeypatch.setattr(module.augment_catalog, "name", lambda augment_id: f"Augment {augment_id}")
+    monkeypatch.setattr(module.augment_catalog, "icon_url", lambda augment_id: f"http://icon/{augment_id}")
+    monkeypatch.setattr(module.augment_catalog, "rarity", lambda augment_id: "kUnknownFutureRarity")
+    monkeypatch.setattr(module.opgg_client, "get_aram_augments", lambda champion_id: {})
+
+    feature = make_feature()
+    feature._champ_name_to_id = {"Ahri": 103}
+
+    recommendation = feature._build_recommendation("Ahri")
+
+    assert recommendation["best_slot"] is None
+    assert recommendation["best_slot_is_guess"] is False
 
 
 # -- _tier_data_for_champion: scraping OP.GG's own site first, MCP as fallback --
