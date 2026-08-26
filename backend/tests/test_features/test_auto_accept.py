@@ -95,3 +95,87 @@ def test_repeated_accept_failures_back_off_and_warn_once(monkeypatch):
     warn_events = [e for e in events if e[0] == "warn"]
     assert len(warn_events) == 1
     assert feature._consecutive_accept_failures >= 3
+
+
+def test_a_ready_check_is_accepted_exactly_once(monkeypatch):
+    """`searchState` describes the whole ~12s ready-check window, not a
+    pending action - it stays "Found" after this feature already accepted.
+    The 0.5s tick therefore used to re-POST the same accept for the rest of
+    the window: a real session's log showed 32 POSTs and 23 "Match accepted"
+    events across 2 ready checks, the tail of them ERROR tracebacks once the
+    check resolved and there was nothing left to accept.
+    """
+    import time
+
+    feature, lcu, events = make_feature()
+    feature.enabled = True
+    accepts = []
+
+    def route(method, endpoint, body=""):
+        if endpoint == "/lol-lobby/v2/lobby/matchmaking/search-state":
+            return FakeResponse(status_code=200, json_data={"searchState": "Found"})
+        accepts.append(endpoint)
+        return FakeResponse(status_code=204)
+
+    lcu.lcu_request = route
+
+    feature.start()
+    try:
+        time.sleep(1.6)  # several 0.5s ticks, all inside one "Found" window
+    finally:
+        feature.stop()
+
+    assert accepts == ["/lol-matchmaking/v1/ready-check/accept"]
+    assert [e for e in events if e[0] == "success"] == [("success", "Match accepted")]
+
+
+def test_the_next_ready_check_is_accepted_again(monkeypatch):
+    """The latch must release when the window ends, or the feature would
+    accept exactly one match per app launch."""
+    import time
+
+    feature, lcu, events = make_feature()
+    feature.enabled = True
+    accepts = []
+    state = {"searching": False}
+
+    def route(method, endpoint, body=""):
+        if endpoint == "/lol-lobby/v2/lobby/matchmaking/search-state":
+            found = "Searching" if state["searching"] else "Found"
+            return FakeResponse(status_code=200, json_data={"searchState": found})
+        accepts.append(endpoint)
+        return FakeResponse(status_code=204)
+
+    lcu.lcu_request = route
+
+    feature.start()
+    try:
+        time.sleep(0.9)          # first check accepted, then latched
+        state["searching"] = True
+        time.sleep(0.9)          # window closes - latch releases
+        state["searching"] = False
+        time.sleep(0.9)          # a genuinely new check
+    finally:
+        feature.stop()
+
+    assert len(accepts) == 2
+
+
+def test_losing_the_client_mid_check_releases_the_latch():
+    """Otherwise a client restart between the accept and the window closing
+    would leave the latch stuck on for the next queue."""
+    feature, _, _ = make_feature()
+    feature.enabled = True
+    feature._accepted_current_ready_check = True
+    feature.lcu.is_league_connected = lambda: False
+
+    # The disconnected branch ignores _sleep()'s return value, so stopping
+    # the loop after one pass means actually setting the stop event.
+    def stop_after_one_pass(_seconds):
+        feature._stop_event.set()
+        return True
+
+    feature._sleep = stop_after_one_pass
+    feature._loop()
+
+    assert feature._accepted_current_ready_check is False

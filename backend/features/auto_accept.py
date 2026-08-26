@@ -24,6 +24,8 @@ class AutoAccept(ThreadedFeature):
         super().__init__(lcu_client, config, on_event)
         self.enabled = bool(self.config["auto_accept"].get("enabled"))
         self._consecutive_accept_failures = 0
+        # Latches once this ready check has been accepted - see _loop.
+        self._accepted_current_ready_check = False
 
     def get_status(self) -> dict:
         return {"key": self.key, "enabled": self.enabled}
@@ -47,6 +49,7 @@ class AutoAccept(ThreadedFeature):
             if self.enabled:
                 if not self.lcu.is_league_connected():
                     self._consecutive_accept_failures = 0
+                    self._accepted_current_ready_check = False
                     self._sleep(2)
                     continue
                 try:
@@ -55,11 +58,24 @@ class AutoAccept(ThreadedFeature):
                     )
 
                     if response.status_code == 200 and response.json().get("searchState") == "Found":
+                        # "Found" describes the whole ready-check window, not
+                        # a pending action: it stays true for the ~12s the
+                        # check is up, including after this feature already
+                        # accepted it. Without this latch the 0.5s tick
+                        # re-POSTs the same accept ~24 times per match -
+                        # measured in a real session's log, 32 POSTs and 23
+                        # "Match accepted" events across 2 ready checks, with
+                        # the tail of them logging ERROR tracebacks once the
+                        # check resolved and there was nothing left to accept.
+                        if self._accepted_current_ready_check:
+                            self._sleep(0.5)
+                            continue
                         delay = get_automation_delay(self.config, "auto_accept", 0.0)
                         if delay:
                             self._sleep(delay)
                         try:
                             self.accept_match()
+                            self._accepted_current_ready_check = True
                             self._consecutive_accept_failures = 0
                         except Exception:
                             self._consecutive_accept_failures += 1
@@ -73,8 +89,12 @@ class AutoAccept(ThreadedFeature):
                             self._sleep(ACCEPT_FAILURE_BACKOFF_SECONDS)
                             continue
                     else:
-                        # A fresh, unrelated ready check should retry at full
-                        # speed instead of inheriting a stale backoff streak.
+                        # Search state left "Found": this ready check is over
+                        # (accepted by everyone, declined, or expired), so the
+                        # next one is a genuinely new check to accept - and a
+                        # fresh check should retry at full speed instead of
+                        # inheriting a stale backoff streak.
+                        self._accepted_current_ready_check = False
                         self._consecutive_accept_failures = 0
                 except Exception:
                     logger.exception("AutoAccept._loop failed")
