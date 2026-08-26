@@ -36,6 +36,18 @@ def loop_feature_keys():
     return sorted(cls.key for cls in FEATURE_CLASSES if issubclass(cls, ThreadedFeature))
 
 
+def _is_loop_thread(thread, expected_keys):
+    """A "camargo-" prefix alone isn't a unique-enough signal any more:
+    `FeatureRegistry._status_pool` names its own worker threads
+    "camargo-status_N", which - now that the API integration tests share
+    one long-lived registry/client for the whole session instead of
+    tearing one down per test - can genuinely be alive at the same time as
+    a *different*, test-local registry's loop threads this file spins up.
+    Matched against the exact expected key set instead of the bare prefix.
+    """
+    return thread.name.startswith("camargo-") and thread.name.removeprefix("camargo-") in expected_keys
+
+
 def test_every_feature_with_a_loop_uses_the_shared_lifecycle():
     for cls in FEATURE_CLASSES:
         has_own_loop = "_loop" in vars(cls)
@@ -57,7 +69,7 @@ def test_start_all_runs_one_thread_per_loop_feature(monkeypatch):
         running = sorted(
             t.name.removeprefix("camargo-")
             for t in threading.enumerate()
-            if t.name.startswith("camargo-") and t.is_alive()
+            if _is_loop_thread(t, expected) and t.is_alive()
         )
         assert running == expected
     finally:
@@ -66,6 +78,7 @@ def test_start_all_runs_one_thread_per_loop_feature(monkeypatch):
 
 def test_stop_all_joins_every_thread(monkeypatch):
     registry = make_registry(monkeypatch)
+    expected = loop_feature_keys()
     registry.start_all()
     time.sleep(0.2)
 
@@ -73,7 +86,7 @@ def test_stop_all_joins_every_thread(monkeypatch):
     registry.stop_all()
     elapsed = time.perf_counter() - started
 
-    leftover = [t.name for t in threading.enumerate() if t.name.startswith("camargo-")]
+    leftover = [t.name for t in threading.enumerate() if _is_loop_thread(t, expected)]
     assert leftover == []
     # Loops sleep in 0.3-2s steps; waiting them out would take seconds.
     assert elapsed < 1.0, f"stop_all took {elapsed:.2f}s, loops are not waking on the stop event"
@@ -81,12 +94,13 @@ def test_stop_all_joins_every_thread(monkeypatch):
 
 def test_start_is_idempotent(monkeypatch):
     registry = make_registry(monkeypatch)
+    expected = loop_feature_keys()
     registry.start_all()
     try:
         registry.start_all()
         time.sleep(0.2)
-        names = [t.name for t in threading.enumerate() if t.name.startswith("camargo-")]
-        assert len(names) == len(set(names)) == len(loop_feature_keys())
+        names = [t.name for t in threading.enumerate() if _is_loop_thread(t, expected)]
+        assert len(names) == len(set(names)) == len(expected)
     finally:
         registry.stop_all()
 

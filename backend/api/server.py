@@ -212,6 +212,38 @@ def toggle_feature(key: str):
     return feature.get_status()
 
 
+#: Only checked where a JSON value's own type is unambiguous - `bool` and
+#: `str`. `int`/`float` are deliberately left alone: JSON has one numeric
+#: type, so a whole-number delay like `2` arriving where `2.0` was typed is
+#: completely normal and must not be rejected.
+_STRICT_ANNOTATIONS = (bool, str)
+
+
+def _reject_type_mismatches(action, params):
+    """Rejects a param whose JSON type doesn't match the action method's own
+    type hint, instead of Python's dynamic typing silently accepting it.
+
+    Found live while adding API test coverage: `toggle(self, state: bool =
+    None)` (six features route through this) assigns `state` verbatim
+    whenever it is not None - `{"state": {"a": 1}}` over the API sets
+    `self.enabled` to that raw dict, which then gets persisted into
+    config.json's "enabled" field. Every method taking an untyped **params
+    dict off the wire is exposed to the same class of bug wherever it has a
+    type hint at all; this closes it generically instead of one call site
+    at a time.
+    """
+    try:
+        signature = inspect.signature(action)
+    except (TypeError, ValueError):
+        return
+    for name, value in params.items():
+        parameter = signature.parameters.get(name)
+        if parameter is None or parameter.annotation not in _STRICT_ANNOTATIONS:
+            continue
+        if not isinstance(value, parameter.annotation):
+            raise TypeError(f"'{name}' must be a {parameter.annotation.__name__}, got {type(value).__name__}")
+
+
 @app.post("/features/{key}/actions/{action_name}")
 def call_feature_action(key: str, action_name: str, params: dict = Body(default={})):
     """Generic dispatch for feature-specific actions (e.g. changing an icon,
@@ -232,9 +264,11 @@ def call_feature_action(key: str, action_name: str, params: dict = Body(default=
         raise HTTPException(status_code=404, detail=f"'{key}' has no action '{action_name}'")
 
     try:
+        _reject_type_mismatches(action, params)
         result = action(**params)
     except TypeError as exc:
-        # Wrong or missing keys in `params` are a client mistake, not a crash
+        # Wrong, missing, or wrong-typed keys in `params` are a client
+        # mistake, not a crash.
         raise HTTPException(status_code=400, detail=f"Invalid parameters for '{action_name}': {exc}")
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))

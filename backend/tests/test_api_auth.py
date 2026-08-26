@@ -3,19 +3,13 @@
 The token stops an ordinary web page from driving the League client through
 127.0.0.1, which is reachable from any browser the user has open.
 """
-import pytest
-from fastapi.testclient import TestClient
-
 import api.server as server
 from core.auth import AUTH_TOKEN, TOKEN_HEADER
 
 AUTH = {TOKEN_HEADER: AUTH_TOKEN}
 
-
-@pytest.fixture
-def client():
-    with TestClient(server.app) as test_client:
-        yield test_client
+# `client` comes from tests/conftest.py - session-scoped, shared with every
+# other test file that needs the real HTTP app. See its docstring for why.
 
 
 def test_http_requires_the_token(client):

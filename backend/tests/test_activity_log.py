@@ -3,7 +3,6 @@ import logging
 import logging.handlers
 
 import pytest
-from fastapi.testclient import TestClient
 
 import api.server as server
 import core.activity_log as activity_log_module
@@ -12,12 +11,15 @@ from core.auth import AUTH_TOKEN, TOKEN_HEADER
 
 AUTH = {TOKEN_HEADER: AUTH_TOKEN}
 
+# `client` comes from tests/conftest.py - session-scoped, shared with every
+# other test file that needs the real HTTP app (see its docstring for why
+# it must not be created per-test here). This file's tests each still need
+# a clean log, which doesn't require a fresh client to get.
 
-@pytest.fixture
-def client():
+
+@pytest.fixture(autouse=True)
+def _clear_activity_log():
     server.ACTIVITY_LOG.clear()
-    with TestClient(server.app) as test_client:
-        yield test_client
 
 
 def make_record(message, level=logging.INFO, name="features.instalock", exc_info=None):
