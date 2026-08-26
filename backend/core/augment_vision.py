@@ -8,6 +8,7 @@ None/False rather than raising, so that case degrades to "the picker is
 never detected" instead of erroring in a feature loop.
 """
 import logging
+import statistics
 
 import mss
 from PIL import Image
@@ -22,9 +23,49 @@ from core.aram_augment_regions import (
 logger = logging.getLogger(__name__)
 
 
-def _is_card_border_gold(pixel):
-    red, green, blue = pixel[:3]
-    return red > 150 and green > 110 and blue < 140 and (red - blue) > 40
+#: Augments come in 5 rarities (kSilver, kGold, kPrismatic, kBronze,
+#: kEventChoice - checked the full Community Dragon catalog; ARAM Mayhem
+#: may not offer all 5), and the card border is tinted per rarity, not one
+#: fixed color. A first version of this only matched a warm gold tone and
+#: missed a real Silver-rarity offer live (confirmed by sampling both:
+#: Gold borders around (173,145,116), Silver around (137,138,137) - neither
+#: close to the other in hue). A second version relaxed to any color within
+#: a brightness band, which is still a hue assumption in disguise: it would
+#: miss a border color saturated enough to have one dark channel (plausible
+#: for Prismatic, which has never been seen live to confirm either way, and
+#: was flagged as still-unhandled before this fix shipped).
+#:
+#: So this doesn't test individual pixels against any color range at all.
+#: A painted border is one solid, consistent color for its whole length; the
+#: two known false-positive sources (world lighting bleeding through the
+#: dimmed background, spell VFX) vary from sample to sample even when
+#: individually bright - confirmed live, one false-positive case swung from
+#: (82,152,255) to (240,171,255) across two rows 20px apart. So each column
+#: is tested for *self-consistency* - most of its 9 samples close to their
+#: own median - which is true for any solid border color, whatever the hue,
+#: and false for noise. Verified against every capture on hand: both real
+#: rarities seen live pass, and all known-closed captures (including the
+#: two noise cases above) still correctly read as closed.
+_BORDER_COLOR_TOLERANCE = 22
+_BORDER_MIN_BRIGHTNESS = 60
+
+
+def _is_card_border_column(pixels):
+    reds = [p[0] for p in pixels]
+    greens = [p[1] for p in pixels]
+    blues = [p[2] for p in pixels]
+    median = (statistics.median(reds), statistics.median(greens), statistics.median(blues))
+    if max(median) < _BORDER_MIN_BRIGHTNESS:
+        return False  # too dark to be any border color - still background
+
+    close = sum(
+        1
+        for red, green, blue in pixels
+        if abs(red - median[0]) <= _BORDER_COLOR_TOLERANCE
+        and abs(green - median[1]) <= _BORDER_COLOR_TOLERANCE
+        and abs(blue - median[2]) <= _BORDER_COLOR_TOLERANCE
+    )
+    return close >= CARD_BORDER_MIN_HITS
 
 
 def primary_monitor_resolution():
@@ -42,9 +83,9 @@ def primary_monitor_resolution():
 def picker_is_open(image=None):
     """True when the 3-card augment picker is actually drawn on screen.
 
-    Cheap enough to poll: samples 27 pixels down the three cards' gold
-    borders. Pass `image` (a full-screen PIL.Image) to test a screenshot;
-    otherwise it grabs the strip containing those borders itself.
+    Cheap enough to poll: samples 27 pixels down the three cards' borders.
+    Pass `image` (a full-screen PIL.Image) to test a screenshot; otherwise
+    it grabs the strip containing those borders itself.
     """
     if image is None:
         strip_top = min(CARD_BORDER_Y_RANGE)
@@ -64,12 +105,8 @@ def picker_is_open(image=None):
     pixels = image.convert("RGB").load()
     passing = 0
     for border_x in CARD_BORDER_XS:
-        hits = sum(
-            1
-            for border_y in CARD_BORDER_Y_RANGE
-            if _is_card_border_gold(pixels[border_x - x_offset, border_y - y_offset])
-        )
-        if hits >= CARD_BORDER_MIN_HITS:
+        column = [pixels[border_x - x_offset, border_y - y_offset] for border_y in CARD_BORDER_Y_RANGE]
+        if _is_card_border_column(column):
             passing += 1
     return passing >= CARD_BORDER_REQUIRED_COUNT
 

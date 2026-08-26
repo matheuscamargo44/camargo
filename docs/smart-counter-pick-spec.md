@@ -346,3 +346,66 @@ already replaced by direct picker detection - the frontend's dedup key was still
 becoming `"undefined:<champion>"`). Fixed to key on the actual identified augment ids, which also fixes a
 real bug: the same champion getting a second, genuinely different offer (e.g. after a reroll) would have
 been silently skipped as "already shown".
+
+### Rarity-blind border detection (2026-08-25) — the picker was invisible on a real Silver-rarity offer
+
+User report: "não está funcionando" on a real pick screen, right after the OP/S/A/B work above shipped.
+Confirmed live by screenshotting the user's actual screen mid-pick: the picker was genuinely on screen,
+but `picker_is_open()` read False.
+
+Root cause, found by sampling raw pixels from the real capture: augments have a **rarity**, and the card
+border is tinted per rarity, not one fixed color. Checked the full Community Dragon catalog for every
+rarity value that exists - there are 5 (`kSilver`, `kGold`, `kPrismatic`, `kBronze`, `kEventChoice`), not
+the 3 casually mentioned in Part B's original research. The detector had only ever been calibrated against
+one real screenshot, which happened to show a Gold-rarity offer (border ≈ `(173,145,116)`, warm). This
+user's real offer was Silver-rarity (border ≈ `(137,138,137)`, neutral grey) - a completely different hue,
+which the original warm-gold-specific color check (`red>150, blue<140, red-blue>40`) never matched. This
+is exactly what the user's own follow-up called out: the rarity system should have been researched instead
+of calibrating against whichever single screenshot happened to be on hand.
+
+Fixed by making the check brightness-based instead of hue-based: a card border only needs to be
+meaningfully brighter than the near-black card interior (`(3-10, 15-38)` sampled from real captures)
+without being near-pure-white (which reads as UI text/glow, not a card frame) -
+`_BORDER_BRIGHTNESS_RANGE = (80, 250)` in `augment_vision.py`. Verified this doesn't just trade one blind
+spot for another: re-ran it against every real capture on hand (both rarities now seen live, plus all 8
+known-closed negatives, including the specific one that broke an even looser, uncapped version of this
+same check - real world lighting/VFX bleeding through the dimmed background at these exact coordinates hit
+9/9 brightness-only hits on one column, which only stayed correctly classified as closed because
+`CARD_BORDER_REQUIRED_COUNT` still requires 2 of 3 columns to agree, not just one).
+
+Icon *identification* needed no change at all and was re-verified working on the real Silver-rarity
+capture without modification: the reference vectors are built from Community Dragon's raw grayscale-mask
+icons, which carry no rarity tint to begin with (the color is a real-time render effect, not baked into
+the asset) - only the border-detection side was ever rarity-specific.
+
+Prismatic/Bronze/EventChoice have not been seen in a live capture yet, so their exact border color is
+still unconfirmed - the brightness-only approach is the hedge against that gap (no hue assumption to break
+this time), not a claim that all 5 have been individually verified.
+
+**Follow-up, same day**: the brightness-range fix above was itself still a hue assumption in disguise (a
+saturated color can have one dark channel, failing a "both channels bright" check) - flagged by the user
+specifically asking about Prismatic ("cartas roxas") before it was ever seen live. Replaced with a
+genuinely hue-agnostic check: rather than testing individual pixels against any absolute color, each
+border column is tested for **self-consistency** - are most of its 9 sampled rows close to their own
+median color. A painted border is one solid color for its whole length; the two known false-positive
+sources (world lighting bleeding through the dimmed background, spell VFX) vary sample to sample even when
+individually bright - confirmed live, one case swung from `(82,152,255)` to `(240,171,255)` across two
+rows 20px apart. This works for any rarity's border color without needing to have seen it, which the
+previous two versions did not achieve. `_is_card_border_column` in `augment_vision.py`.
+
+### Unrated augments read as a verdict, not a data gap (2026-08-25)
+
+User report: "Not among the stronger augments" showed up on most cards. Investigated whether Prismatic
+augments were being systematically excluded from OP.GG's rated data (a real, reasonable suspicion given
+the report) - they are not: 43 of Viego's 193 Prismatic augments are rated, same as any other rarity.
+
+The real explanation is coverage, not exclusion: only ~22% of a champion's full augment pool (135 of ~600
+for Viego) ever gets a tier from OP.GG at all - almost certainly a minimum-sample-size cutoff on their
+side, not every excluded augment being confirmed weak. With that little coverage, basic probability says
+roughly 88% of random 3-card offers will have at least 2 unrated cards - so seeing this message on most
+cards every time is the expected case, not a malfunction.
+
+The actual bug was the wording: "Not among the stronger augments... in this data" reads as a negative
+verdict about the augment, when it should read as "no information available". Reworded to
+`"No OP.GG performance data for this pick with {champion}."` - same underlying logic, just no longer
+implying a judgment the data doesn't support.

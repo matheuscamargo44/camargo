@@ -98,9 +98,16 @@ def augment_justification(champion_name, rank, performance):
     Showing it next to an A/B card would be actively misleading - checked
     live, a tier-5 "B" augment can score 170, well above a tier-3 "OP" at
     88, since performance is not comparable across tiers.
+
+    An unrated augment (`rank is None`) is *not* the same claim as "this is
+    weak" - checked live, only ~22% of a champion's full augment pool ever
+    gets a tier at all (135 of ~600 for Viego), almost certainly because
+    OP.GG needs a minimum sample size before it will rate one. With that
+    little coverage, most 3-card offers will have at least one unrated
+    card by pure chance, so this needs to read as "no data", not a verdict.
     """
     if rank is None:
-        return f"Not among the stronger augments for {champion_name} in this data."
+        return f"No OP.GG performance data for this pick with {champion_name}."
     text = _RANK_JUSTIFICATIONS[rank].format(champion=champion_name)
     if rank in ("OP", "S") and performance is not None:
         text += f" (score {performance:.0f})"
@@ -225,9 +232,12 @@ class AramAugmentAdvisor(ThreadedFeature):
         if len(tiers) > 1:
             return rated[0], None, True
 
-        # Nothing rated. OP.GG omits everything below tier 3, so this
-        # reliably means "worse than the rated cards on offer" rather than
-        # "unknown" - worth showing, never worth recommending.
+        # Nothing rated. Checked live: only ~22% of a champion's augment
+        # pool ever gets a tier at all, almost certainly a minimum-sample-
+        # size cutoff on OP.GG's side rather than every excluded augment
+        # being confirmed weak - so this means "no data", not "bad". Still
+        # worth showing (the icon match itself is trustworthy), never
+        # worth recommending (there is nothing to recommend it on).
         distinct_names = {augment_catalog.name(augment_id) for augment_id in candidates}
         return candidates[0], None, len(distinct_names) > 1
 
