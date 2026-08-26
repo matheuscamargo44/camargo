@@ -203,18 +203,34 @@ PICKER_POLL_SECONDS = 0.5
 #: to this long after a real close, which is a much smaller cost than
 #: flickering while the player is still deciding.
 #:
-#: Known gap, deliberately not fixed here (2026-08-26 audit): a reroll
-#: closes and reopens the picker with 3 different augments, and if that
-#: happens faster than CLOSE_DEBOUNCE_TICKS * PICKER_POLL_SECONDS,
-#: _picker_was_open never drops to False, so the new offer is never
-#: re-captured and the stale pre-reroll badges keep showing. Fixing that
-#: by re-capturing on any partial closed-streak was tried and reverted: it
-#: reintroduces exactly the hover-flicker re-trigger this constant exists
-#: to prevent (see test_a_new_open_edge_is_not_re_captured_while_already_open),
-#: since a flicker and a reroll look identical from picker_is_open() alone.
-#: A real fix needs to compare newly-identified augment ids against the
-#: current recommendation's, not just picker presence.
+#: This only handles the picker genuinely closing. A reroll is a separate
+#: problem it cannot solve - see REOFFER_CONFIRM_TICKS.
 CLOSE_DEBOUNCE_TICKS = 3
+
+#: The reroll case CLOSE_DEBOUNCE_TICKS cannot cover: rerolling swaps all 3
+#: cards, but the picker either never reads as closed for the 3 consecutive
+#: ticks the debounce needs, or closes and reopens entirely between two
+#: polls. Either way `_picker_was_open` never drops, no new capture is
+#: taken, and the pre-reroll badges keep showing over cards that are no
+#: longer there.
+#:
+#: Presence alone genuinely cannot tell a reroll from a hover flicker, so
+#: this compares the *offer's own identity* instead - the augment ids
+#: actually on screen, re-read each tick and diffed against what the
+#: current recommendation was built from. A full re-read costs ~30ms
+#: (measured: 22ms capture + 7ms correlating all 3 cards against the 612
+#: reference vectors) against a 500ms tick, and only runs while the picker
+#: is up, which is seconds per game.
+#:
+#: Requiring the new identity to repeat before acting on it is what keeps
+#: this from reintroducing the re-trigger CLOSE_DEBOUNCE_TICKS exists to
+#: prevent (see test_a_new_open_edge_is_not_re_captured_while_already_open).
+#: A hovered card is drawn enlarged, so its glyph no longer aligns with the
+#: fixed crop and matches nothing - that reads as a *partial* identification,
+#: which is ignored outright below. This is the second line of defence, for
+#: a single mid-animation frame that happens to match something else: a real
+#: reroll's new offer persists across ticks, one bad frame does not.
+REOFFER_CONFIRM_TICKS = 2
 
 
 class AramAugmentAdvisor(ThreadedFeature):
@@ -252,6 +268,15 @@ class AramAugmentAdvisor(ThreadedFeature):
         self._recommendation = None
         self._champion_augment_data = None
         self._champion_id_this_game = None
+        # What the current recommendation was built from, and the
+        # not-yet-confirmed candidate replacing it - see
+        # REOFFER_CONFIRM_TICKS.
+        self._offer_signature = None
+        self._clear_pending_reoffer()
+
+    def _clear_pending_reoffer(self):
+        self._pending_offer_signature = None
+        self._pending_offer_streak = 0
 
     # -- champion id lookup, same source Instalock builds champ_dict from --
 
@@ -389,10 +414,26 @@ class AramAugmentAdvisor(ThreadedFeature):
         )
         return True
 
-    def _build_recommendation(self, champion_name):
-        identified = self._identify_offered_augments()
+    @staticmethod
+    def _offer_signature_of(identified):
+        """A stable identity for one offer: what was found in each slot,
+        taken *before* `_resolve_candidates` collapses a tied set down to
+        one id. Resolution depends on the champion's OP.GG data, so two
+        genuinely identical screens could resolve differently across a
+        cache refresh - the raw candidate sets can't, which is what makes
+        this safe to compare across ticks.
+        """
+        return tuple((entry["slot"], tuple(sorted(entry["candidates"]))) for entry in identified)
+
+    def _build_recommendation(self, champion_name, identified=None):
+        # `identified` is passed in by the reroll path, which has already
+        # read the screen to notice the offer changed at all - no reason to
+        # capture the same three cards twice in the same tick.
+        if identified is None:
+            identified = self._identify_offered_augments()
         if not identified:
             return None
+        self._offer_signature = self._offer_signature_of(identified)
 
         champion_id = self._champion_id_for(champion_name)
         champion_alias = self._champion_alias_for(champion_name)
@@ -579,6 +620,8 @@ class AramAugmentAdvisor(ThreadedFeature):
             if not self._picker_was_open:
                 self._on_picker_opened(champion_name)
                 self._picker_was_open = True
+            else:
+                self._check_for_reoffer(champion_name)
         elif self._picker_was_open:
             self._closed_streak += 1
             if self._closed_streak >= CLOSE_DEBOUNCE_TICKS:
@@ -586,3 +629,50 @@ class AramAugmentAdvisor(ThreadedFeature):
                 # badges come down with it.
                 self._recommendation = None
                 self._picker_was_open = False
+                self._offer_signature = None
+                self._clear_pending_reoffer()
+
+    def _check_for_reoffer(self, champion_name):
+        """Catches the offer changing under a picker that never read as
+        closed - a reroll. See REOFFER_CONFIRM_TICKS for why presence
+        alone can't detect this and identity can.
+        """
+        if self._recommendation is None or self._offer_signature is None:
+            return
+
+        identified = self._identify_offered_augments()
+        # A partial read is the ordinary signature of a hovered card (drawn
+        # enlarged, so its glyph misses the fixed crop and matches nothing),
+        # or of a frame caught mid-animation - never evidence of a new
+        # offer, and not a reason to drop the pending candidate either,
+        # since a reroll's own fade-in produces exactly these frames
+        # between two good reads of the same new cards.
+        if len(identified) != len(AUGMENT_CARD_REGIONS):
+            return
+
+        signature = self._offer_signature_of(identified)
+        if signature == self._offer_signature:
+            self._clear_pending_reoffer()
+            return
+
+        if signature != self._pending_offer_signature:
+            self._pending_offer_signature, self._pending_offer_streak = signature, 1
+        else:
+            self._pending_offer_streak += 1
+        if self._pending_offer_streak < REOFFER_CONFIRM_TICKS:
+            return
+
+        self._clear_pending_reoffer()
+        # No retry loop here, unlike _on_picker_opened: that one races the
+        # picker's fade-in with nothing on screen yet to check against,
+        # while this path has already read all 3 cards twice.
+        recommendation = self._build_recommendation(champion_name, identified=identified)
+        if recommendation is None:
+            return
+        self._recommendation = recommendation
+        if recommendation["best_slot"] is not None:
+            self.on_event(
+                "info",
+                f"Aram Augments: offer changed, now recommending slot "
+                f"{recommendation['best_slot'] + 1} for {champion_name}",
+            )

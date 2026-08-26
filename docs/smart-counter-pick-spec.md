@@ -513,3 +513,49 @@ Visually: the guess still gets the "best" border highlight so it stands out from
 cards, but dashed and amber instead of solid blue, and its rank pill reads "Guess" as an amber outline
 instead of a solid OP/S/A/B fill - recognizable as lower-confidence from across the screen, not just on
 close reading of the text. See `.is-guess` / `.rank-guess` in `overlay.html`.
+
+### Reroll left stale badges over cards that were no longer there (2026-08-26)
+
+Known gap, documented in the code as deliberately-unfixed since the close-debounce work, now closed.
+
+**The bug**: rerolling swaps all 3 cards, but the picker does not reliably read as *closed* while it
+happens. `CLOSE_DEBOUNCE_TICKS` requires 3 consecutive closed readings (1.5s) before believing a close, and
+a reroll either never produces that many or closes and reopens entirely between two 500ms polls. Either
+way `_picker_was_open` never drops to False, `_on_picker_opened` never fires again, and the pre-reroll
+recommendation stays on screen — badges sitting over three cards that are no longer the ones being offered.
+Actively misleading, which is worse than the "no recommendation" every other failure path degrades to.
+
+**Why the obvious fix was already tried and reverted**: re-capturing on any *partial* closed streak
+reintroduces exactly the re-trigger the debounce exists to prevent. Hovering a card to compare it draws it
+enlarged, which drops its border out of the fixed sample column and reads as closed — confirmed live, one
+real pick moment re-triggered 4 times in 6s. From `picker_is_open()` alone a hover flicker and a reroll are
+indistinguishable, so no amount of tuning the presence signal separates them.
+
+**What shipped**: stop asking whether the picker is still open and ask whether it is still showing *the same
+offer*. `_offer_signature_of()` takes the identity of what is on screen — the raw per-slot candidate id sets
+from `identify()`, deliberately captured *before* `_resolve_candidates` collapses them, since resolution
+depends on OP.GG data that can change across a cache refresh while the screen has not. `_check_for_reoffer()`
+re-reads each tick while the picker is up and diffs against what the current recommendation was built from.
+
+Two guards keep this from becoming the reverted fix in another form:
+
+- **A partial read is never evidence.** A hovered card identifies as nothing, so the read comes back with
+  fewer than 3 slots — ignored outright. This is the primary defence, and it is the exact signature of the
+  hover case that broke the previous attempt.
+- **A new identity must repeat** (`REOFFER_CONFIRM_TICKS = 2`) before it is acted on, covering a single
+  mid-animation frame that happens to match some other augment. A partial read does *not* reset the streak:
+  a reroll's own fade-in produces partial frames between the two good reads of the new cards, and resetting
+  there would keep the stale badges up through a slow fade.
+
+Affordable to run every tick: a full re-read measures ~30ms (22ms capture + 7ms correlating all 3 cards
+against the 612 reference vectors) against a 500ms poll, and only runs while the picker is actually open —
+seconds per game. It is also skipped entirely when no recommendation is showing, so the idle path pays
+nothing.
+
+No frontend change was needed: the overlay controller already keys its dedup on `slot:augment_id`, so a
+rebuilt recommendation with new ids re-renders on its own.
+
+**Side effect worth naming**: this also upgrades a *partial* recommendation. If the opening capture only
+ever managed to read 2 of 3 cards (accepted as a fallback after exhausting retries), the next full read
+differs from that 2-slot signature and rebuilds with all 3 — so a card that was missing at fade-in now
+appears instead of being absent for the rest of the pick.

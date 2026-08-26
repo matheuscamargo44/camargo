@@ -9,7 +9,12 @@ import copy
 import pytest
 
 from core.config import DEFAULT_CONFIG
-from features.aram_augment_advisor import AramAugmentAdvisor, augment_justification, augment_rank
+from features.aram_augment_advisor import (
+    CLOSE_DEBOUNCE_TICKS,
+    AramAugmentAdvisor,
+    augment_justification,
+    augment_rank,
+)
 
 
 class StubLCUClient:
@@ -682,6 +687,146 @@ def test_game_state_reset_clears_everything():
     assert feature._picker_was_open is False
     assert feature._closed_streak == 0
     assert feature._champion_augment_data is None
+    assert feature._offer_signature is None
+    assert feature._pending_offer_signature is None
+
+
+# -- reroll: the offer changing under a picker that never reads as closed --
+
+
+def _patch_reads(monkeypatch, reads, tier_data):
+    """Scripts successive whole-screen reads. Each entry in `reads` is one
+    call to _identify_offered_augments(), given as the candidate list per
+    slot - an empty list being a slot that identified as nothing, which is
+    what a hovered (enlarged) card really looks like.
+    """
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "capture_region", lambda box: object())
+    per_slot = iter([candidates for read in reads for candidates in read])
+    monkeypatch.setattr(module.augment_catalog, "identify", lambda image: next(per_slot))
+    monkeypatch.setattr(module.augment_catalog, "name", lambda augment_id: f"Augment {augment_id}")
+    monkeypatch.setattr(module.augment_catalog, "icon_url", lambda augment_id: f"http://icon/{augment_id}")
+    monkeypatch.setattr(module.augment_catalog, "rarity", lambda augment_id: "kGold")
+    monkeypatch.setattr(module.opgg_client, "get_aram_augments", lambda champion_id: tier_data)
+
+
+def _feature_showing(monkeypatch, reads, tier_data):
+    """A feature mid-pick: the picker is open and a recommendation built
+    from the first scripted read is already on screen."""
+    import features.aram_augment_advisor as module
+
+    monkeypatch.setattr(module, "picker_is_open", lambda: True)
+    _patch_reads(monkeypatch, reads, tier_data)
+
+    events = []
+    feature = make_feature()
+    feature.on_event = lambda level, message: events.append(message)
+    feature._champ_name_to_id = {"Ahri": 103}
+    feature._handle_picker_state(True, "Ahri")  # the opening capture
+    return feature, events
+
+
+OFFER = [[1], [2], [3]]
+REROLLED = [[4], [5], [6]]
+TIERS = {1: {"tier": 4}, 2: {"tier": 3}, 3: {"tier": 5}, 4: {"tier": 5}, 5: {"tier": 4}, 6: {"tier": 0}}
+
+
+def test_a_reroll_replaces_the_stale_recommendation(monkeypatch):
+    """The bug this exists for: rerolling swaps all 3 cards, but the picker
+    never reads as closed for the 3 straight ticks CLOSE_DEBOUNCE_TICKS
+    needs - so the pre-reroll badges used to sit there over cards that were
+    no longer on screen, for the rest of the pick.
+    """
+    feature, events = _feature_showing(monkeypatch, [OFFER, REROLLED, REROLLED], TIERS)
+    assert feature._recommendation["best_slot"] == 1  # tier 3 wins the first offer
+
+    feature._handle_picker_state(True, "Ahri")
+    feature._handle_picker_state(True, "Ahri")
+
+    assert [a["augment_id"] for a in feature._recommendation["augments"]] == [4, 5, 6]
+    assert feature._recommendation["best_slot"] == 2  # augment 6, tier 0
+    assert events[-1] == "Aram Augments: offer changed, now recommending slot 3 for Ahri"
+
+
+def test_a_reroll_is_not_acted_on_until_it_repeats(monkeypatch):
+    """One frame showing something new is not yet a reroll - see
+    REOFFER_CONFIRM_TICKS. Acting on a single frame is what reintroduces
+    the re-trigger the close debounce exists to prevent."""
+    feature, _ = _feature_showing(monkeypatch, [OFFER, REROLLED], TIERS)
+
+    feature._handle_picker_state(True, "Ahri")
+
+    assert [a["augment_id"] for a in feature._recommendation["augments"]] == [1, 2, 3]
+
+
+def test_a_steady_picker_never_rebuilds_the_same_offer(monkeypatch):
+    """The common case by far: the player is just looking at the cards.
+    Re-reading the screen must be a no-op, not a rebuild - a rebuild would
+    re-log a 'recommending' event every tick."""
+    feature, events = _feature_showing(monkeypatch, [OFFER, OFFER, OFFER], TIERS)
+    before = feature._recommendation
+
+    feature._handle_picker_state(True, "Ahri")
+    feature._handle_picker_state(True, "Ahri")
+
+    assert feature._recommendation is before
+    assert len(events) == 1  # only the original capture's
+
+
+def test_a_hovered_card_is_not_mistaken_for_a_new_offer(monkeypatch):
+    """Hovering a card to compare it draws it enlarged, so its glyph no
+    longer lines up with the fixed crop and identifies as nothing. That
+    partial read must never look like the offer changed."""
+    hovering = [[1], [], [3]]
+    feature, events = _feature_showing(monkeypatch, [OFFER, hovering, hovering], TIERS)
+
+    feature._handle_picker_state(True, "Ahri")
+    feature._handle_picker_state(True, "Ahri")
+
+    assert [a["augment_id"] for a in feature._recommendation["augments"]] == [1, 2, 3]
+    assert len(events) == 1
+
+
+def test_a_reroll_is_still_caught_across_its_own_fade_in(monkeypatch):
+    """The two confirming reads are not necessarily adjacent: a reroll's
+    own fade-in produces partial frames between them. A partial read must
+    not reset the streak, or a slow fade would keep the stale badges up."""
+    fading = [[4], [], [6]]
+    feature, _ = _feature_showing(monkeypatch, [OFFER, REROLLED, fading, REROLLED], TIERS)
+
+    feature._handle_picker_state(True, "Ahri")  # new offer, first sighting
+    feature._handle_picker_state(True, "Ahri")  # mid-fade, inconclusive
+    feature._handle_picker_state(True, "Ahri")  # confirmed
+
+    assert [a["augment_id"] for a in feature._recommendation["augments"]] == [4, 5, 6]
+
+
+def test_a_closed_picker_forgets_the_offer_it_was_showing(monkeypatch):
+    """Otherwise the next picker to open would be diffed against a dead
+    offer's identity rather than captured fresh."""
+    feature, _ = _feature_showing(monkeypatch, [OFFER], TIERS)
+    assert feature._offer_signature is not None
+
+    for _ in range(CLOSE_DEBOUNCE_TICKS):
+        feature._handle_picker_state(False, "Ahri")
+
+    assert feature._offer_signature is None
+
+
+def test_the_reroll_check_is_skipped_entirely_with_nothing_on_screen(monkeypatch):
+    """No recommendation means nothing to compare against - and, more to
+    the point, no reason to pay for a screen capture every tick."""
+    import features.aram_augment_advisor as module
+
+    def must_not_capture(box):
+        raise AssertionError("must not capture with no recommendation showing")
+
+    feature = make_feature()
+    feature._picker_was_open = True
+    monkeypatch.setattr(module, "capture_region", must_not_capture)
+
+    feature._handle_picker_state(True, "Ahri")
 
 
 # -- _on_picker_opened: retrying a bad capture --
