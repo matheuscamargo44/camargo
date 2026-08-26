@@ -93,7 +93,6 @@ const FEATURE_DESCRIPTIONS = {
   remove_friends: "Deletes all friends from account",
   status_message: "Custom status message on chat profile",
   badges: "Challenge badges displayed on profile banner",
-  aram_augment_advisor: "Best-augment overlay for ARAM: Mayhem (needs borderless, 1920x1080)",
   valorant_dodge: "Leaves agent select immediately",
   valorant_chat_toggle: "Deceive mode (appear offline to friends)",
 };
@@ -186,17 +185,6 @@ export function buildFeatureCard(meta, initialStatus) {
         return;
       }
       statusContainer.appendChild(buildRankPill(status.tier, status.rr));
-      return;
-    }
-
-    // Aram Augments has no summary worth a status line - it either sits
-    // idle or draws its overlay in-game. Its status fields are plumbing
-    // for the overlay, not something to render as pills.
-    if (meta.key === "aram_augment_advisor") {
-      const text = status.unsupported_resolution
-        ? "Needs a 1920x1080 primary display"
-        : FEATURE_DESCRIPTIONS[meta.key];
-      statusContainer.appendChild(el("span", { class: "feature-row-desc", text }));
       return;
     }
 

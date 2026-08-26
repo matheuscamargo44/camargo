@@ -6,8 +6,6 @@ contextBridge.exposeInMainWorld("camargo", {
   appVersion: ipcRenderer.sendSync("camargo:get-version"),
   // navigator.clipboard is unavailable on file:// (not a secure context)
   copyText: (text) => ipcRenderer.invoke("camargo:copy-text", text),
-  showAramOverlay: (badges) => ipcRenderer.send("camargo:aram-overlay-show", { badges }),
-  hideAramOverlay: () => ipcRenderer.send("camargo:aram-overlay-hide"),
   update: {
     getState: () => ipcRenderer.invoke("camargo:update-get-state"),
     check: () => ipcRenderer.invoke("camargo:update-check"),

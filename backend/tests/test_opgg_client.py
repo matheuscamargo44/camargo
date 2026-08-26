@@ -67,65 +67,6 @@ def make_class_repr_tool_response(text):
     return FakeResponse(json_data={"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": text}]}})
 
 
-def test_get_aram_augments_parses_the_class_repr_response(monkeypatch):
-    text = (
-        "class LolListAramAugments: data\n"
-        "class Data: augments\n"
-        "class Augment: id,name,tier,performance\n"
-        "\n"
-        'LolListAramAugments(Data([Augment(2132,"Warlock Juicebox",3,79.89)]))'
-    )
-
-    def fake_post(url, json=None, headers=None, timeout=None):
-        if json.get("method") == "initialize":
-            return FakeResponse(headers={"Mcp-Session-Id": "sess-1"})
-        if json.get("method") == "notifications/initialized":
-            return FakeResponse()
-        if json.get("method") == "tools/call":
-            assert json["params"]["arguments"]["champion_id"] == 81
-            return make_class_repr_tool_response(text)
-        raise AssertionError(f"unexpected method: {json.get('method')}")
-
-    import core.opgg_client as opgg_client_module
-
-    monkeypatch.setattr(opgg_client_module.requests, "post", fake_post)
-
-    client = OpggClient()
-    result = client.get_aram_augments(81)
-
-    assert result == {2132: {"id": 2132, "name": "Warlock Juicebox", "tier": 3, "performance": 79.89}}
-
-
-def test_get_aram_augments_missing_id_is_just_absent_not_a_keyerror(monkeypatch):
-    """Only tier-3+ augments come back with data - a caller asking about a
-    lower-tier augment id must get a clean miss, not a crash."""
-    text = (
-        "class LolListAramAugments: data\n"
-        "class Data: augments\n"
-        "class Augment: id,name,tier,performance\n"
-        "\n"
-        'LolListAramAugments(Data([Augment(2132,"Warlock Juicebox",3,79.89)]))'
-    )
-
-    def fake_post(url, json=None, headers=None, timeout=None):
-        if json.get("method") == "initialize":
-            return FakeResponse(headers={"Mcp-Session-Id": "sess-1"})
-        if json.get("method") == "notifications/initialized":
-            return FakeResponse()
-        if json.get("method") == "tools/call":
-            return make_class_repr_tool_response(text)
-        raise AssertionError(f"unexpected method: {json.get('method')}")
-
-    import core.opgg_client as opgg_client_module
-
-    monkeypatch.setattr(opgg_client_module.requests, "post", fake_post)
-
-    client = OpggClient()
-    result = client.get_aram_augments(81)
-
-    assert result.get(9999) is None
-
-
 class FakeResponse:
     def __init__(self, status_code=200, json_data=None, headers=None):
         self.status_code = status_code

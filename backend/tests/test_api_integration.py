@@ -46,6 +46,18 @@ def connected(monkeypatch):
     monkeypatch.setattr(server.registry.valorant, "is_connected", lambda: True)
 
 
+@pytest.fixture
+def disconnected(monkeypatch):
+    """The 503 gate's own test needs a *guaranteed* absent client. This used
+    to rely on there simply being no League running wherever the suite
+    happened to execute - which silently inverts into a failure the moment a
+    developer runs the tests with the game open, exactly the environment
+    where the rest of the suite is most likely to be run.
+    """
+    monkeypatch.setattr(server.registry.lcu, "is_league_connected", lambda: False)
+    monkeypatch.setattr(server.registry.valorant, "is_connected", lambda: False)
+
+
 # -- auth: every route, every method --
 
 
@@ -127,8 +139,7 @@ def test_lifecycle_and_private_methods_are_never_remotely_callable(client, conne
     assert response.status_code == 404
 
 
-def test_an_unconnected_feature_gates_its_toggle_and_actions_with_503(client):
-    # No `connected` fixture here - this is the real state in a test env.
+def test_an_unconnected_feature_gates_its_toggle_and_actions_with_503(client, disconnected):
     assert client.post("/features/instalock/toggle", headers=AUTH).status_code == 503
     response = client.post(
         "/features/instalock/actions/add_champion", headers=AUTH, json={"champion_name": "Ahri"}

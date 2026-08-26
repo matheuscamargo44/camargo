@@ -1,5 +1,4 @@
 import { reportClientError } from "../api.js";
-import { initAramOverlayController } from "../aram-overlay-controller.js";
 import { el } from "../components.js";
 import { mountLeagueStatus } from "../league-status.js";
 import { registerRoute, startRouter } from "../router.js";
@@ -68,7 +67,6 @@ function bootstrap() {
   // backend start (antivirus scanning a fresh .exe, a stalled League client)
   // could leave the user staring at the boot screen for a very long time.
   startPolling();
-  initAramOverlayController();
 
   // Reveal the UI
   hideLoadingScreen();

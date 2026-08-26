@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor
 from core.config import load_config
 from core.lcu_client import LCUClient
 from core.valorant_client import ValorantClient
-from features.aram_augment_advisor import AramAugmentAdvisor
 from features.aram_bench_swap import AramBenchSwap
 from features.auto_accept import AutoAccept
 from features.auto_honor import AutoHonor
@@ -39,7 +38,6 @@ FEATURE_CLASSES = [
     AutoHonor,
     Dodge,
     AramBenchSwap,
-    AramAugmentAdvisor,
     RandomSkinPicker,
     # Customization
     Background,

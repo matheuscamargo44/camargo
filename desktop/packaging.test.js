@@ -37,7 +37,6 @@ describe("electron-builder files allowlist", () => {
 
   it("still packages the preload scripts both windows load", () => {
     expect(files).toContain("preload.js");
-    expect(files).toContain("overlay-preload.js");
   });
 
   it("keeps test files out of the installer", () => {

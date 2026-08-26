@@ -1,4 +1,4 @@
-# Spec — Instalock Smart Counter-Pick (OP.GG) + ARAM: Desordem augment overlay
+# Spec — Instalock Smart Counter-Pick (OP.GG) + ARAM: Desordem augment overlay (removed)
 
 Status as of **2026-08-24**. Part A shipped in v0.9.0; Part B is implemented and awaiting a live run.
 This doc exists so a future session (or a compacted version of this one) doesn't have to re-derive the
@@ -117,7 +117,25 @@ the toggle on. If it never fires despite an enemy having clearly locked, dump
 `GET /lol-champ-select/v1/session` mid-draft and inspect `theirTeam[].championId` directly — that's the
 single quickest way to root-cause it either way.
 
-## Part B — ARAM: Desordem augment overlay — IMPLEMENTED (2026-08-24)
+## Part B — ARAM: Desordem augment overlay — REMOVED (2026-08-26)
+
+> **Removed from the product at the user's request**, after shipping through v0.15.1. Everything below is
+> kept as history: it is the record of what was tried, what was measured live, and why each call was made —
+> including several findings that cost real investigation (OP.GG's MCP silently omitting tiers 0-2, the
+> per-rarity border tinting, the icon-correlation calibration). If this is ever revisited, start here rather
+> than from scratch; the last working implementation is at tag `v0.15.1`.
+>
+> What went with it: `features/aram_augment_advisor.py`, `core/augment_vision.py`, `core/augment_catalog.py`,
+> `core/aram_augment_regions.py`, `core/opgg_scraper.py`, the whole Electron overlay window
+> (`overlay.html`/`overlay.js`/`overlay-preload.js`/`aram-overlay-controller.js`), and
+> `OpggClient.get_aram_augments`. The `mss`/`Pillow`/`numpy` dependencies went with them — nothing else in
+> the app captures the screen any more.
+>
+> What deliberately stayed: `core/opgg_client.py` (Part A's counter-pick still uses `get_lane_matchup`, and
+> its class-repr parsing is transport machinery for any OP.GG tool) and `features/aram_bench_swap.py`, which
+> is the ARAM bench-swap automation and never had anything to do with augments.
+
+### Original design and research (historical)
 
 **What it does**: opt-in toggle ("Aram Augments"). While in an ARAM: Desordem match, it detects the
 augment picker appearing on screen, identifies the three offered augments from their icons, looks up

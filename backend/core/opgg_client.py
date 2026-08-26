@@ -208,24 +208,6 @@ class OpggClient:
                 self._initialize()
                 return self._call_tool_once(name, arguments)
 
-    def get_aram_augments(self, champion_id, lang="en_US"):
-        """Tier/performance data per augment for `champion_id` (Riot's
-        numeric champion id) in ARAM. Only tier-3+ augments come back with
-        data - an augment id missing from the returned dict means "no tier
-        data", not an error; callers must treat it that way rather than
-        indexing directly.
-        """
-        result = self._call_tool(
-            "lol_list_aram_augments",
-            {
-                "champion_id": champion_id,
-                "lang": lang,
-                "desired_output_fields": ["data.augments[].{id,name,tier,performance}"],
-            },
-        )
-        augments = result.get("data", {}).get("augments", [])
-        return {augment["id"]: augment for augment in augments}
-
     def get_lane_matchup(self, my_champion_name, opponent_champion_name, position):
         """Lane matchup guidance for `my_champion_name` versus
         `opponent_champion_name` in `position` (top/mid/jungle/adc/support).

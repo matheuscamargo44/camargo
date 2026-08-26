@@ -34,7 +34,6 @@ export const FEATURE_TOGGLES = {
   auto_honor: [{ field: "enabled", label: "Enabled", action: null }],
   auto_party_invite: [{ field: "enabled", label: "Auto Invite", action: null }],
   aram_bench_swap: [{ field: "enabled", label: "Enabled", action: null }],
-  aram_augment_advisor: [{ field: "enabled", label: "Enabled", action: null }],
   random_skin: [{ field: "enabled", label: "Enabled", action: null }],
   chat_toggle: [{ field: "disconnected", label: "Chat Connected", action: null, invert: true }],
   instalock: [
