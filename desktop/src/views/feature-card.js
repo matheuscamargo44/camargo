@@ -1,4 +1,5 @@
 import { callAction, reportClientError, toggleFeature } from "../api.js";
+import { championSquareUrl } from "../ddragon.js";
 import { openAgentPicker } from "../agent-picker.js";
 import { openBadgePicker } from "../badge-picker.js";
 import { openChampionListEditor } from "../champion-list-editor.js";
@@ -166,23 +167,57 @@ export function buildFeatureCard(meta, initialStatus) {
     if (meta.key === "counter_pick_advisor") {
       const rec = status.recommendation;
       if (!rec) {
+        // "Waiting" is only true when the feature is actually running -
+        // saying it while the switch is off claims work that is not
+        // happening.
         statusContainer.appendChild(
-          el("span", { class: "feature-row-desc", text: "Waiting for your lane opponent to lock in" })
+          el("span", {
+            class: "feature-row-desc",
+            text: status.enabled
+              ? "Waiting for your lane opponent to lock in"
+              : FEATURE_DESCRIPTIONS[meta.key],
+          })
         );
         return;
       }
-      const wrap = el("div", { class: "counter-pick-list" });
-      wrap.appendChild(el("div", { class: "counter-pick-vs", text: `vs ${rec.enemy} (${rec.position})` }));
+      // Same portrait pill Instalock and AutoBan use, so a champion is
+      // recognised by its face here exactly as it is everywhere else.
+      const wrap = el("div", { class: "champ-list-pills" });
+
+      // Who these picks are *against*. Without it the row is three
+      // portraits with no stated opponent, which is only obvious if you
+      // already know who locked in.
+      const enemyImg = el("img", {
+        src: championSquareUrl(rec.enemy),
+        class: "stat-champ-thumb",
+        alt: rec.enemy,
+      });
+      enemyImg.onerror = () => { enemyImg.style.display = "none"; };
+      wrap.appendChild(
+        el("div", { class: "stat-champ-pill counter-pick-enemy" }, [
+          el("span", { class: "counter-pick-vs", text: "vs" }),
+          enemyImg,
+          el("span", { text: rec.enemy }),
+        ])
+      );
+
       for (const counter of rec.counters) {
-        const row = el("div", { class: "counter-pick-row" + (counter.in_my_list ? " is-mine" : "") });
-        row.appendChild(el("span", { class: "counter-pick-name", text: counter.name }));
-        row.appendChild(
-          el("span", { class: "counter-pick-wr", text: `${Math.round(counter.win_rate * 100)}%` })
-        );
-        if (counter.in_my_list) {
-          row.appendChild(el("span", { class: "counter-pick-owned", text: "in your list" }));
-        }
-        wrap.appendChild(row);
+        const img = el("img", {
+          src: championSquareUrl(counter.name),
+          class: "stat-champ-thumb",
+          alt: counter.name,
+        });
+        img.onerror = () => { img.style.display = "none"; };
+
+        const pill = el("div", { class: "stat-champ-pill counter-pick-pill" + (counter.in_my_list ? " is-mine" : "") }, [
+          img,
+          el("span", { text: counter.name }),
+          el("span", { class: "counter-pick-wr", text: `${Math.round(counter.win_rate * 100)}%` }),
+        ]);
+        pill.title = counter.in_my_list
+          ? `${counter.name} beats ${rec.enemy} - already in your Instalock list`
+          : `${counter.name} beats ${rec.enemy}`;
+        wrap.appendChild(pill);
       }
       statusContainer.appendChild(wrap);
       return;
