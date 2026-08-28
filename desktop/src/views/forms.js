@@ -30,7 +30,6 @@ const RANKED_DIVISION_OPTIONS = [
 // Every feature with a persistent on/off state gets a switch here
 export const FEATURE_TOGGLES = {
   auto_accept: [{ field: "enabled", label: "Enabled", action: null }],
-  counter_pick_advisor: [{ field: "enabled", label: "Enabled", action: null }],
   auto_play_again: [{ field: "enabled", label: "Enabled", action: null }],
   auto_honor: [{ field: "enabled", label: "Enabled", action: null }],
   auto_party_invite: [{ field: "enabled", label: "Auto Invite", action: null }],

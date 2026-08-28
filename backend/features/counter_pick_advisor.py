@@ -4,6 +4,11 @@ Deliberately advisory, not automatic: Instalock's `smart_counter_pick`
 already *acts* on matchup data by reordering the priority list, and this
 does the opposite - it always shows the answer and never picks anything.
 
+It has no switch. A feature that only ever displays something, and only
+while champ select is open, has nothing to protect the player from - a
+toggle would just be one more thing to have left off on the one pick where
+the advice mattered.
+
 Scoped to one lane on purpose. OP.GG's counter data is per-lane matchup
 data and does not compose across roles: checked live, Darius (top) is
 beaten by Jayce/Camille/Ambessa, Viego (jungle) by Nidalee/Kayn/Naafiri -
@@ -18,7 +23,6 @@ roughly 30s.
 """
 import logging
 
-from core.config import save_config
 from core.opgg_client import opgg_client
 from features.base import ThreadedFeature
 from features.instalock import POSITION_MAP
@@ -51,19 +55,7 @@ class CounterPickAdvisor(ThreadedFeature):
         self._last_matchup = None
 
     def get_status(self) -> dict:
-        return {
-            "key": self.key,
-            "enabled": self.config.get("counter_pick_advisor", {}).get("enabled", False),
-            "recommendation": self._recommendation,
-        }
-
-    def toggle(self, state: bool = None) -> bool:
-        current = self.config.get("counter_pick_advisor", {}).get("enabled", False)
-        new_state = (not current) if state is None else state
-        self.config.setdefault("counter_pick_advisor", {})["enabled"] = new_state
-        save_config(self.config)
-        self.on_event("info", f"Counter Picks {'enabled' if new_state else 'disabled'}")
-        return new_state
+        return {"key": self.key, "recommendation": self._recommendation}
 
     # -- champion list, same source Instalock builds champ_dict from --
 
@@ -150,10 +142,6 @@ class CounterPickAdvisor(ThreadedFeature):
 
     def _loop(self):
         while not self._stop_event.is_set():
-            if not self.config.get("counter_pick_advisor", {}).get("enabled", False):
-                if self._sleep(1):
-                    return
-                continue
             if not self.lcu.is_league_connected():
                 self._reset()
                 if self._sleep(2):

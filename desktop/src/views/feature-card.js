@@ -167,16 +167,8 @@ export function buildFeatureCard(meta, initialStatus) {
     if (meta.key === "counter_pick_advisor") {
       const rec = status.recommendation;
       if (!rec) {
-        // "Waiting" is only true when the feature is actually running -
-        // saying it while the switch is off claims work that is not
-        // happening.
         statusContainer.appendChild(
-          el("span", {
-            class: "feature-row-desc",
-            text: status.enabled
-              ? "Waiting for your lane opponent to lock in"
-              : FEATURE_DESCRIPTIONS[meta.key],
-          })
+          el("span", { class: "feature-row-desc", text: "Waiting for your lane opponent to lock in" })
         );
         return;
       }

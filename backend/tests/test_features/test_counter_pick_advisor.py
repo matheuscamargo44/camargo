@@ -57,7 +57,6 @@ def make_feature(monkeypatch, counters=COUNTERS, champions=None):
     monkeypatch.setattr(module.opgg_client, "get_champion_counters", fake_counters)
 
     config = copy.deepcopy(DEFAULT_CONFIG)
-    config["counter_pick_advisor"]["enabled"] = True
     if champions is not None:
         config["instalock"]["champions"] = champions
     events = []
@@ -202,3 +201,11 @@ def test_losing_champ_select_clears_the_advice():
     feature._reset()
 
     assert feature.get_status()["recommendation"] is None
+
+
+def test_the_advisor_has_no_switch():
+    """It only ever displays something, and only while champ select is
+    open. A toggle would add nothing to protect the player from, and would
+    be one more thing to have left off on the pick where it mattered."""
+    assert not hasattr(CounterPickAdvisor, "toggle")
+    assert "enabled" not in CounterPickAdvisor(StubLCUClient(), copy.deepcopy(DEFAULT_CONFIG)).get_status()
